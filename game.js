@@ -11,6 +11,7 @@ class Game {
         this.currentWeapon = 'bullet'; // 'bullet', 'missile', or 'laser'
         this.health = 10; // Add health tracking
         this.hasNuke = true; // Track if nuke is available
+        this.isGameStarted = false; // Track if game has started
         
         // Weapon cooldowns
         this.laserCooldown = 0;
@@ -38,18 +39,27 @@ class Game {
         // Handle window resize
         window.addEventListener('resize', () => this.resizeCanvas());
         
-        // Initialize game
-        this.init();
-        
         // Event listeners
         window.addEventListener('keydown', (e) => this.keys[e.key] = true);
         window.addEventListener('keyup', (e) => this.keys[e.key] = false);
+        
+        // Add start button listener
+        document.getElementById('startButton').addEventListener('click', () => this.startGame());
         
         // Debug logging
         console.log('Game initialized');
         
         // Start game loop
         this.gameLoop();
+    }
+    
+    startGame() {
+        // Hide menu
+        document.getElementById('menu').style.display = 'none';
+        this.isGameStarted = true;
+        
+        // Initialize game
+        this.init();
     }
     
     resizeCanvas() {
@@ -79,6 +89,7 @@ class Game {
     }
     
     update() {
+        if (!this.isGameStarted) return;
         if (this.gameOver) return;
         
         // Update weapon cooldowns
@@ -373,6 +384,8 @@ class Game {
         // Clear canvas
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        if (!this.isGameStarted) return;
         
         // Draw game objects
         this.player.draw(this.ctx);
@@ -1151,6 +1164,8 @@ const game = new Game();
 
 // Handle shooting and weapon switching
 window.addEventListener('keydown', (e) => {
+    if (!game.isGameStarted) return;
+    
     if (e.key === ' ') {
         if (game.gameOver) {
             // Reset game
