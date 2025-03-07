@@ -46,6 +46,21 @@ class Game {
         this.hasNuke = true;
         this.isGameStarted = false;
         
+        // Add ranking system
+        this.ranks = {
+            cadet: { minScore: 0, maxScore: 1000, color: '#fff', shipSize: 20 },
+            ensign: { minScore: 1000, maxScore: 5000, color: '#0f0', shipSize: 22 },
+            lieutenant: { minScore: 5000, maxScore: 15000, color: '#0ff', shipSize: 24 },
+            commander: { minScore: 15000, maxScore: 30000, color: '#ff0', shipSize: 26 },
+            captain: { minScore: 30000, maxScore: 50000, color: '#f0f', shipSize: 28 },
+            admiral: { minScore: 50000, maxScore: Infinity, color: '#f00', shipSize: 30 }
+        };
+        this.currentRank = 'cadet';
+
+        // Add mission system
+        this.missions = {
+            survival: { time: 300, reward: 5000, description: 'Survive for 5 minutes' },
+            patrol: { enemies: 10, reward: 3000, description: 'Eliminate 10 enemies' },
         // Weapon cooldowns
         this.laserCooldown = 0;
         this.laserCooldownTime = 300;
@@ -299,6 +314,11 @@ class Game {
         // Update weapon cooldowns
         if (this.laserCooldown > 0) this.laserCooldown--;
         if (this.missileCooldown > 0) this.missileCooldown--;
+        
+        // Update special weapon cooldowns
+        Object.values(this.specialWeapons).forEach(weapon => {
+            if (weapon.cooldown > 0) weapon.cooldown--;
+        });
         
         // Update player
         this.player.update(this.keys);
@@ -793,6 +813,45 @@ class Game {
                 break;
             }
         }
+
+        // Update score and check rank after collisions
+        this.scoreElement.textContent = `Score: ${this.score}`;
+        this.checkRank();
+    }
+
+    checkRank() {
+        // Find the appropriate rank based on current score
+        for (const [rank, data] of Object.entries(this.ranks)) {
+            if (this.score >= data.minScore && this.score < data.maxScore) {
+                if (this.currentRank !== rank) {
+                    // Player achieved a new rank
+                    this.currentRank = rank;
+                    this.player.updateRank(rank, data);
+                    
+                    // Create rank-up effect
+                    const effect = new RankUpEffect(this.player.x, this.player.y, data.color);
+                    this.explosions.push(effect);
+                    
+                    // Display rank-up message
+                    const rankDisplay = rank.charAt(0).toUpperCase() + rank.slice(1);
+                    this.showMessage(`Promoted to ${rankDisplay}!`, data.color);
+                }
+                break;
+            }
+        }
+    }
+
+    showMessage(text, color) {
+        // Add floating message
+        const message = {
+            text: text,
+            color: color,
+            life: 180, // 3 seconds at 60fps
+            y: this.canvas.height / 3,
+            opacity: 1
+        };
+        this.messages = this.messages || [];
+        this.messages.push(message);
     }
 
     createExplosion(x, y) {
@@ -961,6 +1020,11 @@ class Game {
 
         // Draw enemies
         this.enemies.forEach(enemy => enemy.draw(this.ctx));
+
+        // Draw weapon packs with proper camera transform
+        this.weaponPacks.forEach(pack => {
+            pack.draw(this.ctx);
+        });
 
         this.ctx.restore();
         
@@ -1159,6 +1223,31 @@ class Game {
             this.ctx.arc(packX, packY, 3, 0, Math.PI * 2);
             this.ctx.fill();
         });
+
+        // Draw messages
+        if (this.messages) {
+            this.messages = this.messages.filter(msg => {
+                msg.life--;
+                msg.y -= 0.5; // Float upward
+                msg.opacity = Math.max(0, msg.life / 60); // Fade out in the last second
+                
+                ctx.save();
+                ctx.fillStyle = msg.color + Math.floor(msg.opacity * 255).toString(16).padStart(2, '0');
+                ctx.font = 'bold 32px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(msg.text, this.canvas.width / 2, msg.y);
+                ctx.restore();
+                
+                return msg.life > 0;
+            });
+        }
+
+        // Draw current rank
+        ctx.fillStyle = this.ranks[this.currentRank].color;
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'right';
+        const rankDisplay = this.currentRank.charAt(0).toUpperCase() + this.currentRank.slice(1);
+        ctx.fillText(`Rank: ${rankDisplay}`, this.canvas.width - 20, 120);
     }
     
     gameLoop() {
@@ -1357,10 +1446,19 @@ class Player {
         this.acceleration = 0.2;
         this.maxSpeed = 5;
         this.radius = 20;
-        this.thrusterActive = false;  // Track if thruster is active
-        this.normalMaxSpeed = 5;      // Normal max speed
-        this.thrusterMaxSpeed = 10;   // Max speed with thruster
-        this.thrusterParticles = [];  // Particles for thruster effect
+        this.thrusterActive = false;
+        this.normalMaxSpeed = 5;
+        this.thrusterMaxSpeed = 10;
+        this.thrusterParticles = [];
+        this.rank = 'cadet';
+    }
+    
+    updateRank(newRank, rankData) {
+        this.rank = newRank;
+        this.radius = rankData.shipSize;
+        // Adjust speed based on rank
+        this.normalMaxSpeed = 5 + (rankData.shipSize - 20) / 10;
+        this.thrusterMaxSpeed = 10 + (rankData.shipSize - 20) / 5;
     }
     
     update(keys) {
@@ -1429,16 +1527,93 @@ class Player {
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
         
-        // Draw ship
+        // Draw ship based on rank
         ctx.beginPath();
-        ctx.moveTo(this.radius, 0);
-        ctx.lineTo(-this.radius, -this.radius/2);
-        ctx.lineTo(-this.radius/2, 0);
-        ctx.lineTo(-this.radius, this.radius/2);
+        switch(this.rank) {
+            case 'cadet':
+                // Basic triangular ship
+                ctx.moveTo(this.radius, 0);
+                ctx.lineTo(-this.radius, -this.radius/2);
+                ctx.lineTo(-this.radius/2, 0);
+                ctx.lineTo(-this.radius, this.radius/2);
+                break;
+            case 'ensign':
+                // More angular design
+                ctx.moveTo(this.radius, 0);
+                ctx.lineTo(0, -this.radius/2);
+                ctx.lineTo(-this.radius, -this.radius/2);
+                ctx.lineTo(-this.radius/2, 0);
+                ctx.lineTo(-this.radius, this.radius/2);
+                ctx.lineTo(0, this.radius/2);
+                break;
+            case 'lieutenant':
+                // Double-wing design
+                ctx.moveTo(this.radius, 0);
+                ctx.lineTo(0, -this.radius/2);
+                ctx.lineTo(-this.radius/2, -this.radius);
+                ctx.lineTo(-this.radius, -this.radius/2);
+                ctx.lineTo(-this.radius/2, 0);
+                ctx.lineTo(-this.radius, this.radius/2);
+                ctx.lineTo(-this.radius/2, this.radius);
+                ctx.lineTo(0, this.radius/2);
+                break;
+            case 'commander':
+                // Advanced angular design
+                ctx.moveTo(this.radius, 0);
+                ctx.lineTo(this.radius/2, -this.radius/3);
+                ctx.lineTo(0, -this.radius/2);
+                ctx.lineTo(-this.radius/2, -this.radius);
+                ctx.lineTo(-this.radius, -this.radius/2);
+                ctx.lineTo(-this.radius/2, 0);
+                ctx.lineTo(-this.radius, this.radius/2);
+                ctx.lineTo(-this.radius/2, this.radius);
+                ctx.lineTo(0, this.radius/2);
+                ctx.lineTo(this.radius/2, this.radius/3);
+                break;
+            case 'captain':
+                // Sleek advanced design
+                ctx.moveTo(this.radius, 0);
+                ctx.lineTo(this.radius/2, -this.radius/4);
+                ctx.lineTo(0, -this.radius/2);
+                ctx.lineTo(-this.radius/2, -this.radius);
+                ctx.lineTo(-this.radius, -this.radius/3);
+                ctx.lineTo(-this.radius * 0.8, 0);
+                ctx.lineTo(-this.radius, this.radius/3);
+                ctx.lineTo(-this.radius/2, this.radius);
+                ctx.lineTo(0, this.radius/2);
+                ctx.lineTo(this.radius/2, this.radius/4);
+                break;
+            case 'admiral':
+                // Elite ship design
+                ctx.moveTo(this.radius, 0);
+                ctx.lineTo(this.radius/2, -this.radius/3);
+                ctx.lineTo(0, -this.radius/2);
+                ctx.lineTo(-this.radius/3, -this.radius);
+                ctx.lineTo(-this.radius, -this.radius/2);
+                ctx.lineTo(-this.radius * 0.8, 0);
+                ctx.lineTo(-this.radius, this.radius/2);
+                ctx.lineTo(-this.radius/3, this.radius);
+                ctx.lineTo(0, this.radius/2);
+                ctx.lineTo(this.radius/2, this.radius/3);
+                // Add extra detail for admiral rank
+                ctx.moveTo(this.radius/3, -this.radius/2);
+                ctx.lineTo(this.radius/3, this.radius/2);
+                break;
+        }
         ctx.closePath();
         
-        ctx.strokeStyle = '#fff';
+        // Get rank color from game.ranks
+        const rankColor = game.ranks[this.rank].color;
+        ctx.strokeStyle = rankColor;
+        ctx.lineWidth = 2;
         ctx.stroke();
+        
+        // Add rank-specific glow effect
+        const glowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 1.5);
+        glowGradient.addColorStop(0, rankColor + '40'); // 25% opacity
+        glowGradient.addColorStop(1, rankColor + '00'); // 0% opacity
+        ctx.fillStyle = glowGradient;
+        ctx.fill();
         
         // Draw thruster glow when active
         if (this.thrusterActive) {
@@ -2603,7 +2778,9 @@ class WeaponPack {
         
         // Draw outer glow
         const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 1.5);
-        gradient.addColorStop(0, this.color + Math.floor(this.glowIntensity * 80).toString(16));
+        gradient.addColorStop(0, `rgba(${this.type === 'plasma' ? '0, 255, 255' : 
+            this.type === 'railgun' ? '255, 0, 255' : 
+            '255, 255, 0'}, ${this.glowIntensity})`);
         gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = gradient;
         ctx.beginPath();
