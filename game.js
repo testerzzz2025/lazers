@@ -731,6 +731,21 @@ class Game {
             this.ctx.stroke();
         }
 
+        // Draw large map name in the center of the map (not the screen)
+        this.ctx.save();
+        this.ctx.font = 'bold 240px Arial';  // Increased font size for better visibility
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        
+        // Use the world center coordinates
+        const mapCenterX = this.worldSize.width / 2;
+        const mapCenterY = this.worldSize.height / 2;
+        
+        // Draw the map name at the world center
+        this.ctx.fillText(this.currentMap, mapCenterX, mapCenterY);
+        this.ctx.restore();
+
         this.ctx.restore();
 
         // Draw game objects
