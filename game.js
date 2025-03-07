@@ -1,107 +1,165 @@
 class Game {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
+        if (!this.canvas) {
+            console.error('Could not find canvas element');
+            return;
+        }
         this.ctx = this.canvas.getContext('2d');
+        if (!this.ctx) {
+            console.error('Could not get canvas context');
+            return;
+        }
+
+        // Initialize world properties first
+        this.worldSize = {
+            width: 20000,  // 5x larger
+            height: 15000  // 5x larger
+        };
+
+        // Initialize camera
+        this.camera = {
+            x: 0,
+            y: 0,
+            scale: 1
+        };
+
+        // Add border properties
+        this.borderWidth = 50;
+        this.borderGlow = 20;
+
+        // Set initial canvas size
+        this.resizeCanvas();
+        
+        // Initialize score display
         this.score = 0;
         this.scoreElement = document.getElementById('score');
+        if (!this.scoreElement) {
+            console.error('Could not find score element');
+        }
         
         // Game state
         this.gameOver = false;
         this.keys = {};
-        this.currentWeapon = 'bullet'; // 'bullet', 'missile', or 'laser'
-        this.health = 10; // Add health tracking
-        this.hasNuke = true; // Track if nuke is available
-        this.isGameStarted = false; // Track if game has started
+        this.currentWeapon = 'bullet';
+        this.health = 10;
+        this.hasNuke = true;
+        this.isGameStarted = false;
         
         // Weapon cooldowns
         this.laserCooldown = 0;
-        this.laserCooldownTime = 300; // 5 seconds at 60fps
+        this.laserCooldownTime = 300;
         this.missileCooldown = 0;
-        this.missileCooldownTime = 120; // 2 seconds at 60fps
+        this.missileCooldownTime = 120;
         
         // Game objects
         this.asteroids = [];
         this.satellites = [];
         this.bullets = [];
         this.missiles = [];
-        this.lasers = []; // New array for lasers
-        this.explosions = []; // Initialize explosions array
-        this.playerExplosions = []; // Initialize player explosions array
+        this.lasers = [];
+        this.explosions = [];
+        this.playerExplosions = [];
         
         // Satellite spawn timing
         this.lastSatelliteSpawn = 0;
-        this.satelliteSpawnInterval = 30000; // Spawn a satellite every 30 seconds
+        this.satelliteSpawnInterval = 30000;
         
-        // Set initial canvas size and create player
-        this.resizeCanvas();
-        this.player = new Player(this.canvas.width / 2, this.canvas.height / 2);
+        // Create player after world size is defined
+        this.player = new Player(this.worldSize.width / 2, this.worldSize.height / 2);
         
-        // Handle window resize
-        window.addEventListener('resize', () => this.resizeCanvas());
+        // Generate more stars after world size is defined
+        this.stars = this.generateStars(3000);  // Increased from 2000 to 3000
+
+        // Add mouse state
+        this.mousePressed = false;
         
+        // Add health packs array and spawn timer
+        this.healthPacks = [];
+        this.lastHealthPackSpawn = 0;
+        this.healthPackSpawnInterval = 15000;
+
+        // Add map properties
+        this.currentMap = 'Andromeda Sector';
+        this.wormholes = [];
+        this.mapData = {
+            'Andromeda Sector': {
+                backgroundColor: '#000000',
+                starColor: 'rgba(255, 255, 255, ',
+                borderColor: '#0ff'
+            },
+            'Orion Nebula': {
+                backgroundColor: '#000022',
+                starColor: 'rgba(200, 255, 220, ',
+                borderColor: '#0f8'
+            }
+        };
+
         // Event listeners
-        window.addEventListener('keydown', (e) => this.keys[e.key] = true);
+        window.addEventListener('resize', () => this.resizeCanvas());
+        window.addEventListener('keydown', (e) => {
+            this.keys[e.key] = true;
+            
+            // Weapon switching
+            if (e.key === 'x' || e.key === 'X') {
+                this.cycleWeapon();
+            }
+            
+            // Nuke activation
+            if ((e.key === 'n' || e.key === 'N') && this.hasNuke) {
+                this.activateNuke();
+            }
+            
+            // Shooting
+            if (e.key === ' ' && !this.gameOver) {
+                this.shoot();
+            }
+        });
         window.addEventListener('keyup', (e) => this.keys[e.key] = false);
+        this.canvas.addEventListener('mousedown', () => this.mousePressed = true);
+        this.canvas.addEventListener('mouseup', () => this.mousePressed = false);
+        this.canvas.addEventListener('mouseleave', () => this.mousePressed = false);
         
         // Add start button listener
         document.getElementById('startButton').addEventListener('click', () => this.startGame());
         
         // Debug logging
         console.log('Game initialized');
+        console.log('Canvas dimensions:', this.canvas.width, this.canvas.height);
+        console.log('World dimensions:', this.worldSize.width, this.worldSize.height);
+        console.log('Player position:', this.player.x, this.player.y);
         
         // Start game loop
         this.gameLoop();
-
-        // Add camera and world properties
-        this.camera = {
-            x: 0,
-            y: 0,
-            scale: 1
-        };
-        
-        // Increase world size significantly
-        this.worldSize = {
-            width: 20000,  // 5x larger
-            height: 15000  // 5x larger
-        };
-
-        // Add border properties
-        this.borderWidth = 50;
-        this.borderGlow = 20;
-        
-        // Generate more stars for the larger world
-        this.stars = this.generateStars(2000);
-
-        // Add mouse state
-        this.mousePressed = false;
-        
-        // Add mouse event listeners
-        this.canvas.addEventListener('mousedown', () => this.mousePressed = true);
-        this.canvas.addEventListener('mouseup', () => this.mousePressed = false);
-        this.canvas.addEventListener('mouseleave', () => this.mousePressed = false);
-
-        // Add health packs array and spawn timer
-        this.healthPacks = [];
-        this.lastHealthPackSpawn = 0;
-        this.healthPackSpawnInterval = 15000; // Spawn every 15 seconds
     }
     
     startGame() {
+        console.log('Starting game...');
         // Hide menu
         document.getElementById('menu').style.display = 'none';
         this.isGameStarted = true;
+        console.log('Game started:', this.isGameStarted);
         
         // Initialize game
         this.init();
+        
+        // Ensure wormhole is spawned
+        if (this.wormholes.length === 0) {
+            console.log('No wormholes found, spawning new wormhole...');
+            this.spawnWormhole();
+        }
+        
+        console.log('Game initialized with', this.wormholes.length, 'wormholes');
     }
     
     resizeCanvas() {
+        if (!this.canvas) return;
+        
         // Set canvas size to match window size
         this.canvas.width = window.innerWidth;
         this.canvas.height = window.innerHeight;
         
-        // Debug logging
-        console.log('Canvas size:', this.canvas.width, this.canvas.height);
+        console.log('Canvas resized:', this.canvas.width, this.canvas.height);
         
         // If game is in progress and player exists, adjust player position to stay within bounds
         if (!this.gameOver && this.player) {
@@ -111,33 +169,43 @@ class Game {
     }
     
     init() {
+        console.log('Initializing game...');
         // Create more initial asteroids spread across the world
-        for (let i = 0; i < 50; i++) {  // Increased from 15 to 50
+        for (let i = 0; i < 50; i++) {
             const buffer = 100;
-            // Random position within world bounds
             const x = buffer + Math.random() * (this.worldSize.width - buffer * 2);
             const y = buffer + Math.random() * (this.worldSize.height - buffer * 2);
-            // Random size between 25 and 40
             const radius = 25 + Math.random() * 15;
             
             this.asteroids.push(new Asteroid(x, y, radius));
         }
+        console.log('Asteroids created:', this.asteroids.length);
 
         // Spawn initial health packs
         this.spawnHealthPack();
         this.spawnHealthPack();
+        console.log('Health packs spawned');
+
+        // Spawn wormhole
+        this.spawnWormhole();
+        console.log('Wormhole spawned');
+        
+        // Reset camera to player position
+        this.camera.x = this.player.x - this.canvas.width / 2;
+        this.camera.y = this.player.y - this.canvas.height / 2;
+        console.log('Camera position:', this.camera.x, this.camera.y);
     }
     
     generateStars(count) {
         const stars = [];
-        // Create more stars than needed to ensure good coverage
-        for (let i = 0; i < count; i++) {
+        // Create more stars with better visibility
+        for (let i = 0; i < count * 2; i++) {  // Double the number of stars
             stars.push({
-                x: Math.random() * this.worldSize.width,
-                y: Math.random() * this.worldSize.height,
-                size: Math.random() * 2 + 1,
-                brightness: Math.random() * 0.5 + 0.5,
-                parallaxFactor: Math.random() * 0.3 + 0.2 // Random parallax effect for each star
+                x: Math.random() * this.worldSize.width * 2 - this.worldSize.width / 2,
+                y: Math.random() * this.worldSize.height * 2 - this.worldSize.height / 2,
+                size: Math.random() * 3 + 1.5,  // Increased size range (1.5 to 4.5)
+                brightness: Math.random() * 0.7 + 0.3,  // Increased brightness (0.3 to 1.0)
+                parallaxFactor: Math.random() * 0.7 + 0.3  // Increased parallax effect
             });
         }
         return stars;
@@ -167,6 +235,15 @@ class Game {
         // Update player
         this.player.update(this.keys);
         this.player.thrusterActive = this.mousePressed;  // Update thruster state
+        this.wrapObject(this.player);  // Use wrapObject for player instead of player.wrap
+        
+        // Update wormholes
+        this.wormholes.forEach(wormhole => {
+            wormhole.update();
+            if (wormhole.collidesWith(this.player)) {
+                this.switchMap(wormhole.destinationMap);
+            }
+        });
         
         // Update game objects with world wrapping
         this.updateGameObjects();
@@ -238,21 +315,29 @@ class Game {
     }
 
     wrapObject(obj) {
-        // Replace wrapping with boundary collision
-        if (obj.x < this.borderWidth) {
-            obj.x = this.borderWidth;
-            if (obj.velocity) obj.velocity.x *= -0.5; // Bounce with reduced velocity
-        } else if (obj.x > this.worldSize.width - this.borderWidth) {
-            obj.x = this.worldSize.width - this.borderWidth;
-            if (obj.velocity) obj.velocity.x *= -0.5;
+        // Enforce strict border rules - nothing can cross the borders
+        if (obj.x - obj.radius < this.borderWidth) {
+            obj.x = this.borderWidth + obj.radius;
+            if (obj.velocity) {
+                obj.velocity.x = Math.abs(obj.velocity.x); // Bounce right
+            }
+        } else if (obj.x + obj.radius > this.worldSize.width - this.borderWidth) {
+            obj.x = this.worldSize.width - this.borderWidth - obj.radius;
+            if (obj.velocity) {
+                obj.velocity.x = -Math.abs(obj.velocity.x); // Bounce left
+            }
         }
         
-        if (obj.y < this.borderWidth) {
-            obj.y = this.borderWidth;
-            if (obj.velocity) obj.velocity.y *= -0.5;
-        } else if (obj.y > this.worldSize.height - this.borderWidth) {
-            obj.y = this.worldSize.height - this.borderWidth;
-            if (obj.velocity) obj.velocity.y *= -0.5;
+        if (obj.y - obj.radius < this.borderWidth) {
+            obj.y = this.borderWidth + obj.radius;
+            if (obj.velocity) {
+                obj.velocity.y = Math.abs(obj.velocity.y); // Bounce down
+            }
+        } else if (obj.y + obj.radius > this.worldSize.height - this.borderWidth) {
+            obj.y = this.worldSize.height - this.borderWidth - obj.radius;
+            if (obj.velocity) {
+                obj.velocity.y = -Math.abs(obj.velocity.y); // Bounce up
+            }
         }
     }
 
@@ -556,53 +641,47 @@ class Game {
     }
     
     draw() {
-        // Clear canvas
-        this.ctx.fillStyle = '#000';
+        if (!this.canvas || !this.ctx) {
+            console.error('Canvas or context is not initialized');
+            return;
+        }
+
+        // Clear canvas with map-specific background
+        this.ctx.fillStyle = this.mapData[this.currentMap].backgroundColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
-        if (!this.isGameStarted) return;
+        if (!this.isGameStarted) {
+            console.log('Game not started, skipping draw');
+            return;
+        }
 
         this.ctx.save();
         
         // Apply camera transform
         this.ctx.translate(-this.camera.x, -this.camera.y);
 
-        // Draw background stars with improved wrapping
-        const visibleArea = {
-            left: this.camera.x - this.canvas.width * 0.5,
-            right: this.camera.x + this.canvas.width * 1.5,
-            top: this.camera.y - this.canvas.height * 0.5,
-            bottom: this.camera.y + this.canvas.height * 1.5
-        };
-
+        // Draw stars before anything else
         this.stars.forEach(star => {
-            // Calculate base position with parallax
-            let baseX = star.x - this.camera.x * star.parallaxFactor;
-            let baseY = star.y - this.camera.y * star.parallaxFactor;
+            // Calculate star position with parallax
+            const x = star.x + (this.camera.x * (1 - star.parallaxFactor));
+            const y = star.y + (this.camera.y * (1 - star.parallaxFactor));
             
-            // Calculate wrapped positions
-            const positions = [
-                { x: baseX, y: baseY },
-                { x: baseX + this.worldSize.width, y: baseY },
-                { x: baseX - this.worldSize.width, y: baseY },
-                { x: baseX, y: baseY + this.worldSize.height },
-                { x: baseX, y: baseY - this.worldSize.height },
-                { x: baseX + this.worldSize.width, y: baseY + this.worldSize.height },
-                { x: baseX + this.worldSize.width, y: baseY - this.worldSize.height },
-                { x: baseX - this.worldSize.width, y: baseY + this.worldSize.height },
-                { x: baseX - this.worldSize.width, y: baseY - this.worldSize.height }
-            ];
+            this.ctx.fillStyle = this.mapData[this.currentMap].starColor + star.brightness + ')';
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, star.size, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
 
-            // Draw star at all relevant positions
-            positions.forEach(pos => {
-                if (pos.x >= visibleArea.left && pos.x <= visibleArea.right &&
-                    pos.y >= visibleArea.top && pos.y <= visibleArea.bottom) {
-                    this.ctx.fillStyle = `rgba(255, 255, 255, ${star.brightness})`;
-                    this.ctx.beginPath();
-                    this.ctx.arc(pos.x, pos.y, star.size, 0, Math.PI * 2);
-                    this.ctx.fill();
-                }
-            });
+        // Draw wormholes with increased visibility
+        this.wormholes.forEach(wormhole => {
+            wormhole.draw(this.ctx);
+            
+            // Add a bright marker around the wormhole
+            this.ctx.beginPath();
+            this.ctx.arc(wormhole.x, wormhole.y, wormhole.radius + 20, 0, Math.PI * 2);
+            this.ctx.strokeStyle = 'rgba(100, 200, 255, 0.8)';
+            this.ctx.lineWidth = 5;
+            this.ctx.stroke();
         });
 
         // Draw world borders with glow effect
@@ -731,6 +810,12 @@ class Game {
         const minimapX = padding;
         const minimapY = this.canvas.height - minimapSize - padding;
         
+        // Draw map name above minimap
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '18px Arial';
+        this.ctx.textAlign = 'left';
+        this.ctx.fillText(this.currentMap, minimapX, minimapY - 30);
+        
         // Draw minimap background
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
         this.ctx.fillRect(minimapX, minimapY, minimapSize, minimapSize);
@@ -743,6 +828,22 @@ class Game {
         // Calculate scale factors
         const scaleX = minimapSize / this.worldSize.width;
         const scaleY = minimapSize / this.worldSize.height;
+
+        // Draw wormholes on minimap
+        this.ctx.fillStyle = '#ff00ff'; // Bright purple for visibility
+        this.wormholes.forEach(wormhole => {
+            const wormholeX = minimapX + (wormhole.x * scaleX);
+            const wormholeY = minimapY + (wormhole.y * scaleY);
+            this.ctx.beginPath();
+            this.ctx.arc(wormholeX, wormholeY, 5, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            // Add a pulsing glow effect
+            this.ctx.beginPath();
+            this.ctx.arc(wormholeX, wormholeY, 8, 0, Math.PI * 2);
+            this.ctx.strokeStyle = 'rgba(255, 0, 255, 0.5)';
+            this.ctx.stroke();
+        });
         
         // Draw grid on minimap
         this.ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
@@ -823,9 +924,16 @@ class Game {
     }
     
     gameLoop() {
+        if (!this.canvas || !this.ctx) {
+            console.error('Canvas not initialized, stopping game loop');
+            return;
+        }
+        
         this.update();
         this.draw();
-        requestAnimationFrame(() => this.gameLoop());
+        
+        // Use arrow function to preserve 'this' context
+        window.requestAnimationFrame(() => this.gameLoop());
     }
 
     spawnHealthPack() {
@@ -835,6 +943,77 @@ class Game {
         const y = buffer + Math.random() * (this.worldSize.height - buffer * 2);
         
         this.healthPacks.push(new HealthPack(x, y));
+    }
+
+    spawnWormhole() {
+        // Clear existing wormholes first
+        this.wormholes = [];
+        
+        const buffer = 200;
+        // Spawn wormhole in a more visible location (not too close to edges)
+        const x = buffer + Math.random() * (this.worldSize.width - buffer * 2);
+        const y = buffer + Math.random() * (this.worldSize.height - buffer * 2);
+        const destinationMap = this.currentMap === 'Andromeda Sector' ? 'Orion Nebula' : 'Andromeda Sector';
+        
+        // Create new wormhole with increased size
+        const wormhole = new Wormhole(x, y, destinationMap);
+        wormhole.radius = 80; // Increased size for better visibility
+        this.wormholes.push(wormhole);
+        
+        console.log('Spawned wormhole at:', x, y, 'to', destinationMap);
+    }
+
+    switchMap(newMap) {
+        // Store current map properties
+        const oldMap = this.currentMap;
+        this.currentMap = newMap;
+
+        // Regenerate stars with new color scheme
+        this.stars = this.generateStars(3000);
+
+        // Respawn wormhole in new location
+        this.wormholes = [];
+        this.spawnWormhole();
+
+        // Reset player position to center of new map
+        this.player.x = this.worldSize.width / 2;
+        this.player.y = this.worldSize.height / 2;
+        this.player.velocity = { x: 0, y: 0 };
+
+        // Create teleport effect
+        const effect = new WormholeEffect(this.player.x, this.player.y);
+        this.explosions.push(effect);
+    }
+
+    shoot() {
+        if (this.gameOver) return;
+
+        const spawnX = this.player.x + Math.cos(this.player.angle) * this.player.radius;
+        const spawnY = this.player.y + Math.sin(this.player.angle) * this.player.radius;
+
+        switch (this.currentWeapon) {
+            case 'bullet':
+                this.bullets.push(new Bullet(spawnX, spawnY, this.player.angle));
+                break;
+            case 'missile':
+                if (this.missileCooldown <= 0) {
+                    this.missiles.push(new Missile(spawnX, spawnY, this.player.angle, 12, this.player.velocity));
+                    this.missileCooldown = this.missileCooldownTime;
+                }
+                break;
+            case 'laser':
+                if (this.laserCooldown <= 0) {
+                    this.lasers.push(new Laser(spawnX, spawnY, this.player.angle));
+                    this.laserCooldown = this.laserCooldownTime;
+                }
+                break;
+        }
+    }
+
+    cycleWeapon() {
+        const weapons = ['bullet', 'missile', 'laser'];
+        const currentIndex = weapons.indexOf(this.currentWeapon);
+        this.currentWeapon = weapons[(currentIndex + 1) % weapons.length];
     }
 }
 
@@ -903,22 +1082,6 @@ class Player {
             particle.life--;
             return particle.life > 0;
         });
-    }
-    
-    wrap(width, height) {
-        // Handle horizontal wrapping
-        if (this.x < -this.radius) {
-            this.x = width + this.radius;
-        } else if (this.x > width + this.radius) {
-            this.x = -this.radius;
-        }
-        
-        // Handle vertical wrapping
-        if (this.y < -this.radius) {
-            this.y = height + this.radius;
-        } else if (this.y > height + this.radius) {
-            this.y = -this.radius;
-        }
     }
     
     draw(ctx) {
@@ -1770,59 +1933,155 @@ class Laser {
     }
 }
 
+// Add WormholeEffect class for teleportation visual effect
+class WormholeEffect {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 0;
+        this.maxRadius = 100;
+        this.life = 30;
+        this.particles = [];
+        
+        for (let i = 0; i < 30; i++) {
+            const angle = (Math.PI * 2 * i) / 30;
+            const speed = 3 + Math.random() * 3;
+            this.particles.push({
+                x: this.x,
+                y: this.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 30,
+                hue: Math.random() * 60 + 240 // Blue to purple range
+            });
+        }
+    }
+    
+    update() {
+        this.radius += 5;
+        this.life--;
+        
+        this.particles.forEach(particle => {
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.life--;
+        });
+        
+        this.particles = this.particles.filter(p => p.life > 0);
+    }
+    
+    draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(100, 0, 255, ${this.life / 30})`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        this.particles.forEach(particle => {
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, 2, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${particle.hue}, 100%, 50%, ${particle.life / 30})`;
+            ctx.fill();
+        });
+    }
+}
+
+class Wormhole {
+    constructor(x, y, destinationMap) {
+        this.x = x;
+        this.y = y;
+        this.radius = 50;
+        this.destinationMap = destinationMap;
+        this.rotation = 0;
+        this.rotationSpeed = 0.02;
+        this.particles = [];
+        this.ringRadius = 60;
+        this.pulsePhase = 0;
+    }
+
+    update() {
+        this.rotation += this.rotationSpeed;
+        this.pulsePhase += 0.05;
+        
+        // Create new particles
+        if (Math.random() < 0.3) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = this.radius * (0.8 + Math.random() * 0.4);
+            this.particles.push({
+                x: this.x + Math.cos(angle) * distance,
+                y: this.y + Math.sin(angle) * distance,
+                vx: (Math.random() - 0.5) * 2,
+                vy: (Math.random() - 0.5) * 2,
+                life: 30,
+                hue: Math.random() * 60 + 240 // Blue to purple range
+            });
+        }
+
+        // Update particles
+        this.particles = this.particles.filter(particle => {
+            // Move particles towards the center
+            const dx = this.x - particle.x;
+            const dy = this.y - particle.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            particle.vx += (dx / dist) * 0.2;
+            particle.vy += (dy / dist) * 0.2;
+            
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.life--;
+            
+            return particle.life > 0;
+        });
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        // Draw outer ring with pulsing effect
+        const pulseScale = 1 + Math.sin(this.pulsePhase) * 0.1;
+        
+        // Draw multiple rotating rings
+        for (let i = 0; i < 3; i++) {
+            ctx.rotate(this.rotation + (i * Math.PI / 3));
+            ctx.beginPath();
+            ctx.ellipse(0, 0, this.ringRadius * pulseScale, this.ringRadius * 0.4 * pulseScale, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(100, 200, 255, ${0.3 - i * 0.1})`;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+        
+        // Draw inner portal effect
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+        gradient.addColorStop(0, 'rgba(100, 200, 255, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(50, 100, 255, 0.3)');
+        gradient.addColorStop(1, 'rgba(0, 0, 255, 0)');
+        
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        
+        ctx.restore();
+        
+        // Draw particles
+        this.particles.forEach(particle => {
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, 2, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${particle.hue}, 100%, 50%, ${particle.life / 30})`;
+            ctx.fill();
+        });
+    }
+
+    collidesWith(obj) {
+        const dx = this.x - obj.x;
+        const dy = this.y - obj.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance < this.radius + obj.radius;
+    }
+}
+
 // Start the game
 const game = new Game();
-
-// Handle shooting and weapon switching
-window.addEventListener('keydown', (e) => {
-    if (!game.isGameStarted) return;
-    
-    if (e.key === ' ') {
-        if (game.gameOver) {
-            // Reset game
-            game.player = new Player(game.canvas.width / 2, game.canvas.height / 2);
-            game.asteroids = [];
-            game.satellites = [];
-            game.bullets = [];
-            game.missiles = [];
-            game.lasers = []; // Reset lasers
-            game.explosions = [];
-            game.playerExplosions = [];
-            game.score = 0;
-            game.health = 10; // Reset health
-            game.hasNuke = true; // Reset nuke availability
-            game.laserCooldown = 0; // Reset laser cooldown
-            game.missileCooldown = 0; // Reset missile cooldown
-            game.scoreElement.textContent = 'Score: 0';
-            game.gameOver = false;
-            game.init();
-        } else {
-            // Calculate weapon spawn position in world coordinates
-            const spawnX = game.player.x + Math.cos(game.player.angle) * game.player.radius;
-            const spawnY = game.player.y + Math.sin(game.player.angle) * game.player.radius;
-
-            // Shoot based on current weapon
-            if (game.currentWeapon === 'bullet') {
-                game.bullets.push(new Bullet(spawnX, spawnY, game.player.angle));
-            } else if (game.currentWeapon === 'missile' && game.missileCooldown === 0) {
-                game.missiles.push(new Missile(spawnX, spawnY, game.player.angle, 12, game.player.velocity));
-                game.missileCooldown = game.missileCooldownTime;
-            } else if (game.currentWeapon === 'laser' && game.laserCooldown === 0) {
-                game.lasers.push(new Laser(spawnX, spawnY, game.player.angle));
-                game.laserCooldown = game.laserCooldownTime;
-            }
-        }
-    } else if (e.key.toLowerCase() === 'x') {
-        // Toggle weapon
-        if (game.currentWeapon === 'bullet') {
-            game.currentWeapon = 'missile';
-        } else if (game.currentWeapon === 'missile') {
-            game.currentWeapon = 'laser';
-        } else {
-            game.currentWeapon = 'bullet';
-        }
-    } else if (e.key.toLowerCase() === 'n') {
-        // Activate nuke
-        game.activateNuke();
-    }
-}); 
+// Start the game loop immediately
+requestAnimationFrame(() => game.gameLoop()); 
