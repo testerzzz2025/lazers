@@ -86,12 +86,62 @@ class Game {
             'Andromeda Sector': {
                 backgroundColor: '#000000',
                 starColor: 'rgba(255, 255, 255, ',
-                borderColor: '#0ff'
+                borderColor: '#0ff',
+                connections: ['Orion Nebula', 'Carina Expanse', 'Cygnus Void']
             },
             'Orion Nebula': {
                 backgroundColor: '#000022',
                 starColor: 'rgba(200, 255, 220, ',
-                borderColor: '#0f8'
+                borderColor: '#0f8',
+                connections: ['Andromeda Sector', 'Pleiades Cluster']
+            },
+            'Carina Expanse': {
+                backgroundColor: '#220000',
+                starColor: 'rgba(255, 200, 200, ',
+                borderColor: '#f44',
+                connections: ['Andromeda Sector', 'Vela Remnant']
+            },
+            'Cygnus Void': {
+                backgroundColor: '#002222',
+                starColor: 'rgba(200, 255, 255, ',
+                borderColor: '#4ff',
+                connections: ['Andromeda Sector', 'Perseus Arm']
+            },
+            'Pleiades Cluster': {
+                backgroundColor: '#002200',
+                starColor: 'rgba(220, 255, 200, ',
+                borderColor: '#4f4',
+                connections: ['Orion Nebula', 'Taurus Gate']
+            },
+            'Vela Remnant': {
+                backgroundColor: '#220022',
+                starColor: 'rgba(255, 200, 255, ',
+                borderColor: '#f4f',
+                connections: ['Carina Expanse', 'Centaurus Web']
+            },
+            'Perseus Arm': {
+                backgroundColor: '#222200',
+                starColor: 'rgba(255, 255, 200, ',
+                borderColor: '#ff4',
+                connections: ['Cygnus Void', 'Cassiopeia Drift']
+            },
+            'Taurus Gate': {
+                backgroundColor: '#110022',
+                starColor: 'rgba(220, 200, 255, ',
+                borderColor: '#88f',
+                connections: ['Pleiades Cluster', 'Gemini Sector']
+            },
+            'Centaurus Web': {
+                backgroundColor: '#221100',
+                starColor: 'rgba(255, 220, 200, ',
+                borderColor: '#f84',
+                connections: ['Vela Remnant', 'Scorpius Maze']
+            },
+            'Cassiopeia Drift': {
+                backgroundColor: '#002211',
+                starColor: 'rgba(200, 255, 220, ',
+                borderColor: '#4f8',
+                connections: ['Perseus Arm']
             }
         };
 
@@ -131,6 +181,24 @@ class Game {
         
         // Start game loop
         this.gameLoop();
+
+        // Add enemies array and spawn timer
+        this.enemies = [];
+        this.lastEnemySpawn = 0;
+        this.enemySpawnInterval = 15000; // Increased from 5000 to 15000 (15 seconds between spawns)
+        this.maxEnemies = 4; // Reduced from 8 to 4
+
+        // Add special weapons array and spawn timer
+        this.weaponPacks = [];
+        this.lastWeaponPackSpawn = 0;
+        this.weaponPackSpawnInterval = 45000; // 45 seconds between weapon pack spawns
+        
+        // Add special weapons ammo counts
+        this.specialWeapons = {
+            'plasma': { ammo: 0, cooldown: 0, cooldownTime: 20 },
+            'railgun': { ammo: 0, cooldown: 0, cooldownTime: 45 },
+            'shotgun': { ammo: 0, cooldown: 0, cooldownTime: 30 }
+        };
     }
     
     startGame() {
@@ -270,6 +338,35 @@ class Game {
         // Update health packs
         this.healthPacks.forEach(healthPack => {
             healthPack.update();
+        });
+
+        // Spawn enemies periodically
+        if (currentTime - this.lastEnemySpawn > this.enemySpawnInterval && this.enemies.length < this.maxEnemies) {
+            this.spawnEnemy();
+            this.lastEnemySpawn = currentTime;
+        }
+        
+        // Update enemies
+        this.enemies.forEach(enemy => {
+            enemy.update(this.player);
+            this.wrapObject(enemy);
+            
+            // Enemy shooting
+            const bullet = enemy.shoot();
+            if (bullet) {
+                this.bullets.push(bullet);
+            }
+        });
+
+        // Spawn weapon packs periodically
+        if (currentTime - this.lastWeaponPackSpawn > this.weaponPackSpawnInterval) {
+            this.spawnWeaponPack();
+            this.lastWeaponPackSpawn = currentTime;
+        }
+        
+        // Update weapon packs
+        this.weaponPacks.forEach(pack => {
+            pack.update();
         });
     }
     
@@ -615,6 +712,87 @@ class Game {
                 break;
             }
         }
+
+        // Player-Enemy bullet collisions
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            if (this.bullets[i].isEnemyBullet && this.player.collidesWith(this.bullets[i])) {
+                this.health--;
+                this.bullets.splice(i, 1);
+                
+                // Create player explosion at collision point
+                const collisionX = this.player.x;
+                const collisionY = this.player.y;
+                this.playerExplosions.push(new PlayerExplosion(collisionX, collisionY));
+                
+                if (this.health <= 0) {
+                    this.gameOver = true;
+                }
+                break;
+            }
+        }
+
+        // Player bullets-Enemy collisions
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            if (!this.bullets[i].isEnemyBullet) {
+                for (let j = this.enemies.length - 1; j >= 0; j--) {
+                    if (this.enemies[j].collidesWith(this.bullets[i])) {
+                        this.enemies[j].health--;
+                        this.bullets.splice(i, 1);
+                        
+                        if (this.enemies[j].health <= 0) {
+                            // Create explosion at enemy position
+                            const explosionX = this.enemies[j].x;
+                            const explosionY = this.enemies[j].y;
+                            this.explosions.push(new Explosion(explosionX, explosionY));
+                            
+                            // Remove enemy and add score
+                            this.enemies.splice(j, 1);
+                            this.score += this.enemies[j].type === 'fighter' ? 200 : 400;
+                            this.scoreElement.textContent = `Score: ${this.score}`;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Player-Enemy collisions
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+            if (this.player.collidesWith(this.enemies[i])) {
+                this.health -= 2;
+                // Create explosion at collision point
+                const collisionX = (this.player.x + this.enemies[i].x) / 2;
+                const collisionY = (this.player.y + this.enemies[i].y) / 2;
+                this.explosions.push(new Explosion(collisionX, collisionY));
+                this.enemies.splice(i, 1);
+                
+                if (this.health <= 0) {
+                    this.gameOver = true;
+                }
+                break;
+            }
+        }
+
+        // Player-WeaponPack collisions
+        for (let i = this.weaponPacks.length - 1; i >= 0; i--) {
+            const dx = this.player.x - this.weaponPacks[i].x;
+            const dy = this.player.y - this.weaponPacks[i].y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < this.player.radius + this.weaponPacks[i].radius) {
+                // Add ammo to player's weapons
+                const pack = this.weaponPacks[i];
+                this.specialWeapons[pack.type].ammo += pack.ammo;
+                
+                // Create pickup effect
+                const effect = new WeaponPickupEffect(pack.x, pack.y, pack.color);
+                this.explosions.push(effect);
+                
+                // Remove weapon pack
+                this.weaponPacks.splice(i, 1);
+                break;
+            }
+        }
     }
 
     createExplosion(x, y) {
@@ -682,6 +860,14 @@ class Game {
             this.ctx.strokeStyle = 'rgba(100, 200, 255, 0.8)';
             this.ctx.lineWidth = 5;
             this.ctx.stroke();
+
+            // Draw destination label above the wormhole
+            this.ctx.save();
+            this.ctx.font = 'bold 24px Arial';
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(`To: ${wormhole.destinationMap}`, wormhole.x, wormhole.y - wormhole.radius - 30);
+            this.ctx.restore();
         });
 
         // Draw world borders with glow effect
@@ -773,6 +959,9 @@ class Game {
         // Draw health packs
         this.healthPacks.forEach(healthPack => healthPack.draw(this.ctx));
 
+        // Draw enemies
+        this.enemies.forEach(enemy => enemy.draw(this.ctx));
+
         this.ctx.restore();
         
         // Draw UI elements (not affected by camera)
@@ -849,6 +1038,8 @@ class Game {
         this.wormholes.forEach(wormhole => {
             const wormholeX = minimapX + (wormhole.x * scaleX);
             const wormholeY = minimapY + (wormhole.y * scaleY);
+            
+            // Draw wormhole point
             this.ctx.beginPath();
             this.ctx.arc(wormholeX, wormholeY, 5, 0, Math.PI * 2);
             this.ctx.fill();
@@ -858,6 +1049,12 @@ class Game {
             this.ctx.arc(wormholeX, wormholeY, 8, 0, Math.PI * 2);
             this.ctx.strokeStyle = 'rgba(255, 0, 255, 0.5)';
             this.ctx.stroke();
+
+            // Draw minimap label
+            this.ctx.font = '10px Arial';
+            this.ctx.fillStyle = '#fff';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(wormhole.destinationMap.split(' ')[0], wormholeX, wormholeY - 10);
         });
         
         // Draw grid on minimap
@@ -936,6 +1133,32 @@ class Game {
         this.ctx.textAlign = 'left';
         this.ctx.fillText(`X: ${Math.round(this.player.x)}, Y: ${Math.round(this.player.y)}`, 
             minimapX, minimapY - 10);
+
+        // Draw special weapons ammo counts
+        let yOffset = 120;
+        Object.entries(this.specialWeapons).forEach(([weapon, data]) => {
+            if (data.ammo > 0) {
+                this.ctx.fillStyle = '#fff';
+                this.ctx.textAlign = 'right';
+                this.ctx.fillText(`${weapon.toUpperCase()}: ${data.ammo}`, this.canvas.width - 20, yOffset);
+                
+                if (data.cooldown > 0 && this.currentWeapon === weapon) {
+                    this.ctx.fillStyle = '#f00';
+                    this.ctx.fillText(`COOLDOWN: ${Math.ceil(data.cooldown / 60)}s`, this.canvas.width - 20, yOffset + 20);
+                }
+                yOffset += 40;
+            }
+        });
+
+        // Draw weapon packs on minimap
+        this.weaponPacks.forEach(pack => {
+            const packX = minimapX + (pack.x * scaleX);
+            const packY = minimapY + (pack.y * scaleY);
+            this.ctx.fillStyle = pack.color;
+            this.ctx.beginPath();
+            this.ctx.arc(packX, packY, 3, 0, Math.PI * 2);
+            this.ctx.fill();
+        });
     }
     
     gameLoop() {
@@ -965,17 +1188,36 @@ class Game {
         this.wormholes = [];
         
         const buffer = 200;
-        // Spawn wormhole in a more visible location (not too close to edges)
-        const x = buffer + Math.random() * (this.worldSize.width - buffer * 2);
-        const y = buffer + Math.random() * (this.worldSize.height - buffer * 2);
-        const destinationMap = this.currentMap === 'Andromeda Sector' ? 'Orion Nebula' : 'Andromeda Sector';
+        const connections = this.mapData[this.currentMap].connections;
         
-        // Create new wormhole with increased size
-        const wormhole = new Wormhole(x, y, destinationMap);
-        wormhole.radius = 80; // Increased size for better visibility
-        this.wormholes.push(wormhole);
-        
-        console.log('Spawned wormhole at:', x, y, 'to', destinationMap);
+        // Create a wormhole for each connection
+        connections.forEach(destinationMap => {
+            // Generate position away from other wormholes
+            let x, y, validPosition;
+            do {
+                validPosition = true;
+                x = buffer + Math.random() * (this.worldSize.width - buffer * 2);
+                y = buffer + Math.random() * (this.worldSize.height - buffer * 2);
+                
+                // Check distance from other wormholes
+                for (const wormhole of this.wormholes) {
+                    const dx = x - wormhole.x;
+                    const dy = y - wormhole.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < 500) { // Minimum distance between wormholes
+                        validPosition = false;
+                        break;
+                    }
+                }
+            } while (!validPosition);
+            
+            // Create new wormhole
+            const wormhole = new Wormhole(x, y, destinationMap);
+            wormhole.radius = 80; // Increased size for better visibility
+            this.wormholes.push(wormhole);
+            
+            console.log('Spawned wormhole at:', x, y, 'to', destinationMap);
+        });
     }
 
     switchMap(newMap) {
@@ -1022,13 +1264,87 @@ class Game {
                     this.laserCooldown = this.laserCooldownTime;
                 }
                 break;
+            case 'plasma':
+                if (this.specialWeapons.plasma.ammo > 0 && this.specialWeapons.plasma.cooldown <= 0) {
+                    const plasma = new PlasmaShot(spawnX, spawnY, this.player.angle);
+                    this.bullets.push(plasma);
+                    this.specialWeapons.plasma.ammo--;
+                    this.specialWeapons.plasma.cooldown = this.specialWeapons.plasma.cooldownTime;
+                }
+                break;
+            case 'railgun':
+                if (this.specialWeapons.railgun.ammo > 0 && this.specialWeapons.railgun.cooldown <= 0) {
+                    const rail = new RailgunShot(spawnX, spawnY, this.player.angle);
+                    this.bullets.push(rail);
+                    this.specialWeapons.railgun.ammo--;
+                    this.specialWeapons.railgun.cooldown = this.specialWeapons.railgun.cooldownTime;
+                }
+                break;
+            case 'shotgun':
+                if (this.specialWeapons.shotgun.ammo > 0 && this.specialWeapons.shotgun.cooldown <= 0) {
+                    for (let i = -2; i <= 2; i++) {
+                        const spread = this.player.angle + (i * 0.1);
+                        const shot = new ShotgunPellet(spawnX, spawnY, spread);
+                        this.bullets.push(shot);
+                    }
+                    this.specialWeapons.shotgun.ammo--;
+                    this.specialWeapons.shotgun.cooldown = this.specialWeapons.shotgun.cooldownTime;
+                }
+                break;
         }
     }
 
     cycleWeapon() {
         const weapons = ['bullet', 'missile', 'laser'];
+        // Add special weapons that have ammo
+        Object.entries(this.specialWeapons).forEach(([weapon, data]) => {
+            if (data.ammo > 0) {
+                weapons.push(weapon);
+            }
+        });
         const currentIndex = weapons.indexOf(this.currentWeapon);
         this.currentWeapon = weapons[(currentIndex + 1) % weapons.length];
+    }
+
+    spawnEnemy() {
+        const buffer = 100;
+        const spawnSide = Math.floor(Math.random() * 4);
+        let x, y;
+        
+        switch(spawnSide) {
+            case 0: // top
+                x = Math.random() * this.worldSize.width;
+                y = buffer;
+                break;
+            case 1: // right
+                x = this.worldSize.width - buffer;
+                y = Math.random() * this.worldSize.height;
+                break;
+            case 2: // bottom
+                x = Math.random() * this.worldSize.width;
+                y = this.worldSize.height - buffer;
+                break;
+            case 3: // left
+                x = buffer;
+                y = Math.random() * this.worldSize.height;
+                break;
+        }
+        
+        // Randomly choose enemy type
+        const type = Math.random() < 0.7 ? 'fighter' : 'heavy';
+        this.enemies.push(new Enemy(x, y, type));
+    }
+
+    spawnWeaponPack() {
+        const buffer = 100;
+        const x = buffer + Math.random() * (this.worldSize.width - buffer * 2);
+        const y = buffer + Math.random() * (this.worldSize.height - buffer * 2);
+        
+        // Randomly choose weapon type
+        const weaponTypes = ['plasma', 'railgun', 'shotgun'];
+        const type = weaponTypes[Math.floor(Math.random() * weaponTypes.length)];
+        
+        this.weaponPacks.push(new WeaponPack(x, y, type));
     }
 }
 
@@ -2093,6 +2409,384 @@ class Wormhole {
         const dy = this.y - obj.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         return distance < this.radius + obj.radius;
+    }
+}
+
+class Enemy {
+    constructor(x, y, type = 'fighter') {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.radius = 25;
+        this.angle = 0;
+        this.velocity = { x: 0, y: 0 };
+        this.maxSpeed = 3;
+        this.health = type === 'fighter' ? 3 : 5;
+        this.shootCooldown = 0;
+        this.shootCooldownTime = type === 'fighter' ? 60 : 90;
+        this.color = type === 'fighter' ? '#f44' : '#f84';
+        
+        // Add new properties for aggro behavior
+        this.aggroRange = type === 'fighter' ? 800 : 1000; // Detection range
+        this.isAggro = false; // Whether enemy is actively pursuing player
+        this.patrolAngle = Math.random() * Math.PI * 2; // Random patrol direction
+        this.patrolSpeed = type === 'fighter' ? 1 : 0.5; // Slower patrol speed
+    }
+    
+    update(player) {
+        // Calculate distance to player
+        const dx = player.x - this.x;
+        const dy = player.y - this.y;
+        const distanceToPlayer = Math.sqrt(dx * dx + dy * dy);
+        
+        // Check if player is within aggro range
+        this.isAggro = distanceToPlayer < this.aggroRange;
+        
+        if (this.isAggro) {
+            // Aggressive behavior when player is in range
+            const targetAngle = Math.atan2(dy, dx);
+            
+            // Smoothly rotate towards player
+            const angleDiff = targetAngle - this.angle;
+            this.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), 0.05);
+            
+            // Move towards player if too far, away if too close
+            const idealDistance = this.type === 'fighter' ? 300 : 400;
+            const speedMultiplier = distanceToPlayer > idealDistance ? 1 : -1;
+            
+            // Update velocity for combat
+            this.velocity.x += Math.cos(this.angle) * 0.1 * speedMultiplier;
+            this.velocity.y += Math.sin(this.angle) * 0.1 * speedMultiplier;
+            
+            // Higher speed when aggressive
+            this.maxSpeed = this.type === 'fighter' ? 3 : 2;
+        } else {
+            // Passive patrol behavior
+            this.patrolAngle += (Math.random() - 0.5) * 0.02; // Slight random direction changes
+            this.velocity.x = Math.cos(this.patrolAngle) * this.patrolSpeed;
+            this.velocity.y = Math.sin(this.patrolAngle) * this.patrolSpeed;
+            this.angle = this.patrolAngle;
+            
+            // Lower speed when patrolling
+            this.maxSpeed = this.patrolSpeed;
+        }
+        
+        // Limit speed
+        const speed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
+        if (speed > this.maxSpeed) {
+            this.velocity.x = (this.velocity.x / speed) * this.maxSpeed;
+            this.velocity.y = (this.velocity.y / speed) * this.maxSpeed;
+        }
+        
+        // Apply velocity
+        this.x += this.velocity.x;
+        this.y += this.velocity.y;
+        
+        // Update shoot cooldown
+        if (this.shootCooldown > 0) {
+            this.shootCooldown--;
+        }
+    }
+    
+    shoot() {
+        // Only shoot when aggro and within cooldown
+        if (this.isAggro && this.shootCooldown <= 0) {
+            const bulletSpeed = 8;
+            const bullet = new Bullet(
+                this.x + Math.cos(this.angle) * this.radius,
+                this.y + Math.sin(this.angle) * this.radius,
+                this.angle,
+                bulletSpeed
+            );
+            bullet.isEnemyBullet = true;
+            this.shootCooldown = this.shootCooldownTime;
+            return bullet;
+        }
+        return null;
+    }
+    
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        
+        // Draw enemy ship
+        ctx.beginPath();
+        if (this.type === 'fighter') {
+            // Fighter shape (smaller, more angular)
+            ctx.moveTo(this.radius, 0);
+            ctx.lineTo(-this.radius, -this.radius/2);
+            ctx.lineTo(-this.radius/2, 0);
+            ctx.lineTo(-this.radius, this.radius/2);
+        } else {
+            // Heavy shape (larger, more bulky)
+            ctx.moveTo(this.radius, 0);
+            ctx.lineTo(0, -this.radius/2);
+            ctx.lineTo(-this.radius, -this.radius/2);
+            ctx.lineTo(-this.radius, this.radius/2);
+            ctx.lineTo(0, this.radius/2);
+        }
+        ctx.closePath();
+        
+        // Change color based on aggro state
+        ctx.strokeStyle = this.isAggro ? this.color : 'rgba(150, 150, 150, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Draw engine glow
+        const glowColor = this.isAggro ? 
+            (this.type === 'fighter' ? 'rgba(255, 68, 68, 0.5)' : 'rgba(255, 136, 68, 0.5)') :
+            'rgba(150, 150, 150, 0.3)';
+        const gradient = ctx.createLinearGradient(-this.radius, 0, -this.radius * 1.5, 0);
+        gradient.addColorStop(0, glowColor);
+        gradient.addColorStop(1, 'rgba(150, 150, 150, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(-this.radius, -this.radius/4, -this.radius/2, this.radius/2);
+        
+        // Draw aggro range indicator when in debug mode or when first detecting player
+        if (this.isAggro && this.shootCooldown > this.shootCooldownTime - 30) {
+            ctx.restore();
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.aggroRange, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.1)';
+            ctx.stroke();
+        } else {
+            ctx.restore();
+        }
+    }
+    
+    collidesWith(obj) {
+        const dx = this.x - obj.x;
+        const dy = this.y - obj.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance < this.radius + obj.radius;
+    }
+}
+
+class WeaponPack {
+    constructor(x, y, type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+        this.radius = 20;
+        this.rotation = 0;
+        this.pulsePhase = 0;
+        this.glowIntensity = 0;
+        
+        // Set color based on weapon type
+        switch(type) {
+            case 'plasma':
+                this.color = '#0ff';
+                this.ammo = 15;
+                break;
+            case 'railgun':
+                this.color = '#f0f';
+                this.ammo = 5;
+                break;
+            case 'shotgun':
+                this.color = '#ff0';
+                this.ammo = 10;
+                break;
+        }
+    }
+    
+    update() {
+        this.rotation += 0.02;
+        this.pulsePhase += 0.1;
+        this.glowIntensity = Math.sin(this.pulsePhase) * 0.3 + 0.7;
+    }
+    
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        
+        // Draw outer glow
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 1.5);
+        gradient.addColorStop(0, this.color + Math.floor(this.glowIntensity * 80).toString(16));
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw weapon icon
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 2;
+        
+        switch(this.type) {
+            case 'plasma':
+                // Draw plasma gun icon
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius * 0.6, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(this.radius * 0.6, 0);
+                ctx.lineTo(this.radius, 0);
+                ctx.stroke();
+                break;
+            case 'railgun':
+                // Draw railgun icon
+                ctx.beginPath();
+                ctx.moveTo(-this.radius, 0);
+                ctx.lineTo(this.radius, 0);
+                ctx.moveTo(this.radius * 0.5, -this.radius * 0.3);
+                ctx.lineTo(this.radius * 0.5, this.radius * 0.3);
+                ctx.stroke();
+                break;
+            case 'shotgun':
+                // Draw shotgun icon
+                ctx.beginPath();
+                ctx.moveTo(-this.radius * 0.5, 0);
+                ctx.lineTo(this.radius, 0);
+                ctx.moveTo(this.radius * 0.5, -this.radius * 0.3);
+                ctx.lineTo(this.radius * 0.5, this.radius * 0.3);
+                ctx.stroke();
+                break;
+        }
+        
+        ctx.restore();
+    }
+}
+
+class PlasmaShot extends Bullet {
+    constructor(x, y, angle) {
+        super(x, y, angle, 12);
+        this.radius = 6;
+        this.damage = 3;
+        this.life = 45;
+    }
+    
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        // Draw plasma glow
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 2);
+        gradient.addColorStop(0, 'rgba(0, 255, 255, 0.8)');
+        gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius * 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw plasma core
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.restore();
+    }
+}
+
+class RailgunShot extends Bullet {
+    constructor(x, y, angle) {
+        super(x, y, angle, 20);
+        this.radius = 3;
+        this.damage = 5;
+        this.life = 30;
+        this.length = 40;
+    }
+    
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        
+        // Draw trail
+        const gradient = ctx.createLinearGradient(-this.length, 0, 0, 0);
+        gradient.addColorStop(0, 'rgba(255, 0, 255, 0)');
+        gradient.addColorStop(1, 'rgba(255, 0, 255, 0.8)');
+        
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(-this.length, 0);
+        ctx.lineTo(0, 0);
+        ctx.stroke();
+        
+        // Draw projectile
+        ctx.fillStyle = '#f0f';
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.restore();
+    }
+}
+
+class ShotgunPellet extends Bullet {
+    constructor(x, y, angle) {
+        super(x, y, angle, 15);
+        this.radius = 2;
+        this.damage = 1;
+        this.life = 20;
+    }
+    
+    draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff0';
+        ctx.fill();
+    }
+}
+
+// Add new WeaponPickupEffect class after ShotgunPellet class
+class WeaponPickupEffect {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.radius = 0;
+        this.maxRadius = 60;
+        this.life = 30;
+        this.particles = [];
+        
+        // Create particles
+        for (let i = 0; i < 12; i++) {
+            const angle = (Math.PI * 2 * i) / 12;
+            const speed = 2 + Math.random() * 2;
+            this.particles.push({
+                x: this.x,
+                y: this.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 30
+            });
+        }
+    }
+    
+    update() {
+        this.radius += 3;
+        this.life--;
+        
+        // Update particles
+        this.particles.forEach(particle => {
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.life--;
+        });
+        
+        this.particles = this.particles.filter(p => p.life > 0);
+    }
+    
+    draw(ctx) {
+        // Draw expanding ring
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `${this.color}${Math.floor((this.life / 30) * 255).toString(16).padStart(2, '0')}`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Draw particles
+        this.particles.forEach(particle => {
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, 2, 0, Math.PI * 2);
+            ctx.fillStyle = `${this.color}${Math.floor((particle.life / 30) * 255).toString(16).padStart(2, '0')}`;
+            ctx.fill();
+        });
     }
 }
 
