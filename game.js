@@ -1,5 +1,6 @@
 class Game {
     constructor() {
+        // Initialize canvas
         this.canvas = document.getElementById('gameCanvas');
         if (!this.canvas) {
             console.error('Could not find canvas element');
@@ -11,62 +12,37 @@ class Game {
             return;
         }
 
-        // Initialize world properties first
+        // Initialize score element
+        this.scoreElement = document.getElementById('score');
+        if (!this.scoreElement) {
+            console.error('Could not find score element');
+            return;
+        }
+
+        // Initialize all properties
+        this.initializeProperties();
+
+        // Set up event listeners
+        this.setupEventListeners();
+
+        // Start game loop
+        this.gameLoop();
+    }
+
+    initializeProperties() {
+        // World properties
         this.worldSize = {
-            width: 20000,  // 5x larger
-            height: 15000  // 5x larger
+            width: 20000,
+            height: 15000
         };
 
-        // Initialize camera
+        // Camera
         this.camera = {
             x: 0,
             y: 0,
             scale: 1
         };
 
-        // Add border properties
-        this.borderWidth = 50;
-        this.borderGlow = 20;
-
-        // Set initial canvas size
-        this.resizeCanvas();
-        
-        // Initialize score display
-        this.score = 0;
-        this.scoreElement = document.getElementById('score');
-        if (!this.scoreElement) {
-            console.error('Could not find score element');
-        }
-        
-        // Game state
-        this.gameOver = false;
-        this.keys = {};
-        this.currentWeapon = 'bullet';
-        this.health = 10;
-        this.hasNuke = true;
-        this.isGameStarted = false;
-        
-        // Add ranking system
-        this.ranks = {
-            cadet: { minScore: 0, maxScore: 1000, color: '#fff', shipSize: 20 },
-            ensign: { minScore: 1000, maxScore: 5000, color: '#0f0', shipSize: 22 },
-            lieutenant: { minScore: 5000, maxScore: 15000, color: '#0ff', shipSize: 24 },
-            commander: { minScore: 15000, maxScore: 30000, color: '#ff0', shipSize: 26 },
-            captain: { minScore: 30000, maxScore: 50000, color: '#f0f', shipSize: 28 },
-            admiral: { minScore: 50000, maxScore: Infinity, color: '#f00', shipSize: 30 }
-        };
-        this.currentRank = 'cadet';
-
-        // Add mission system
-        this.missions = {
-            survival: { time: 300, reward: 5000, description: 'Survive for 5 minutes' },
-            patrol: { enemies: 10, reward: 3000, description: 'Eliminate 10 enemies' },
-        // Weapon cooldowns
-        this.laserCooldown = 0;
-        this.laserCooldownTime = 300;
-        this.missileCooldown = 0;
-        this.missileCooldownTime = 120;
-        
         // Game objects
         this.asteroids = [];
         this.satellites = [];
@@ -75,13 +51,185 @@ class Game {
         this.lasers = [];
         this.explosions = [];
         this.playerExplosions = [];
-        
-        // Satellite spawn timing
+        this.messages = [];
+        this.weaponPacks = [];
+        this.healthPacks = [];
+        this.enemies = [];
+        this.wormholes = [];
+
+        // Game state
+        this.gameOver = false;
+        this.keys = {};
+        this.currentWeapon = 'bullet';
+        this.health = 10;
+        this.hasNuke = true;
+        this.isGameStarted = false;
+        this.score = 0;
+        this.mousePressed = false;
+
+        // Spawn timers
         this.lastSatelliteSpawn = 0;
         this.satelliteSpawnInterval = 30000;
-        
-        // Create player after world size is defined
+        this.lastHealthPackSpawn = 0;
+        this.healthPackSpawnInterval = 15000;
+        this.lastEnemySpawn = 0;
+        this.enemySpawnInterval = 15000;
+        this.maxEnemies = 4;
+        this.lastWeaponPackSpawn = 0;
+        this.weaponPackSpawnInterval = 45000;
+
+        // Map system
+        this.currentMap = 'Andromeda Sector';
+        this.mapData = {
+            'Andromeda Sector': {
+                backgroundColor: '#000000',
+                starColor: 'rgba(255, 255, 255, ',
+                borderColor: '#0ff',
+                connections: ['Orion Nebula', 'Carina Expanse', 'Cygnus Void']
+            },
+            'Orion Nebula': {
+                backgroundColor: '#000022',
+                starColor: 'rgba(200, 255, 220, ',
+                borderColor: '#0f8',
+                connections: ['Andromeda Sector', 'Pleiades Cluster']
+            },
+            'Carina Expanse': {
+                backgroundColor: '#220000',
+                starColor: 'rgba(255, 200, 200, ',
+                borderColor: '#f44',
+                connections: ['Andromeda Sector', 'Vela Remnant']
+            },
+            'Cygnus Void': {
+                backgroundColor: '#002222',
+                starColor: 'rgba(200, 255, 255, ',
+                borderColor: '#4ff',
+                connections: ['Andromeda Sector', 'Perseus Arm']
+            },
+            'Pleiades Cluster': {
+                backgroundColor: '#002200',
+                starColor: 'rgba(220, 255, 200, ',
+                borderColor: '#4f4',
+                connections: ['Orion Nebula', 'Taurus Gate']
+            },
+            'Vela Remnant': {
+                backgroundColor: '#220022',
+                starColor: 'rgba(255, 200, 255, ',
+                borderColor: '#f4f',
+                connections: ['Carina Expanse', 'Centaurus Web']
+            },
+            'Perseus Arm': {
+                backgroundColor: '#222200',
+                starColor: 'rgba(255, 255, 200, ',
+                borderColor: '#ff4',
+                connections: ['Cygnus Void', 'Cassiopeia Drift']
+            },
+            'Taurus Gate': {
+                backgroundColor: '#110022',
+                starColor: 'rgba(220, 200, 255, ',
+                borderColor: '#88f',
+                connections: ['Pleiades Cluster', 'Gemini Sector']
+            },
+            'Centaurus Web': {
+                backgroundColor: '#221100',
+                starColor: 'rgba(255, 220, 200, ',
+                borderColor: '#f84',
+                connections: ['Vela Remnant', 'Scorpius Maze']
+            },
+            'Cassiopeia Drift': {
+                backgroundColor: '#002211',
+                starColor: 'rgba(200, 255, 220, ',
+                borderColor: '#4f8',
+                connections: ['Perseus Arm']
+            }
+        };
+
+        // Border
+        this.borderWidth = 50;
+        this.borderGlow = 20;
+
+        // Game state
+        this.gameOver = false;
+        this.keys = {};
+        this.currentWeapon = 'bullet';
+        this.health = 10;
+        this.hasNuke = true;
+        this.isGameStarted = false;
+        this.score = 0;
+        this.mousePressed = false;
+
+        // Ranking system
+        this.ranks = {};
+        this.ranks.cadet = { minScore: 0, maxScore: 1000, color: '#fff', shipSize: 20 };
+        this.ranks.ensign = { minScore: 1000, maxScore: 5000, color: '#0f0', shipSize: 22 };
+        this.ranks.lieutenant = { minScore: 5000, maxScore: 15000, color: '#0ff', shipSize: 24 };
+        this.ranks.commander = { minScore: 15000, maxScore: 30000, color: '#ff0', shipSize: 26 };
+        this.ranks.captain = { minScore: 30000, maxScore: 50000, color: '#f0f', shipSize: 28 };
+        this.ranks.admiral = { minScore: 50000, maxScore: Infinity, color: '#f00', shipSize: 30 };
+        this.currentRank = 'cadet';
+
+        // Weapon systems
+        this.laserCooldown = 0;
+        this.laserCooldownTime = 300;
+        this.missileCooldown = 0;
+        this.missileCooldownTime = 120;
+
+        // Game objects
+        this.asteroids = [];
+        this.satellites = [];
+        this.bullets = [];
+        this.missiles = [];
+        this.lasers = [];
+        this.explosions = [];
+        this.playerExplosions = [];
+        this.messages = [];
+        this.weaponPacks = [];
+
+        // Spawn timers
+        this.lastSatelliteSpawn = 0;
+        this.satelliteSpawnInterval = 30000;
+        this.lastHealthPackSpawn = 0;
+        this.healthPackSpawnInterval = 15000;
+        this.lastEnemySpawn = 0;
+        this.enemySpawnInterval = 15000;
+        this.maxEnemies = 4;
+        this.lastWeaponPackSpawn = 0;
+        this.weaponPackSpawnInterval = 45000;
+
+        // Special weapons
+        this.specialWeapons = {
+            plasma: { ammo: 0, cooldown: 0, cooldownTime: 20 },
+            railgun: { ammo: 0, cooldown: 0, cooldownTime: 45 },
+            shotgun: { ammo: 0, cooldown: 0, cooldownTime: 30 }
+        };
+
+        // Create player
         this.player = new Player(this.worldSize.width / 2, this.worldSize.height / 2);
+
+        // Generate stars
+        this.stars = this.generateStars(3000);
+
+        // Set initial canvas size
+        this.resizeCanvas();
+    }
+
+    setupEventListeners() {
+        window.addEventListener('resize', () => this.resizeCanvas());
+        window.addEventListener('keydown', (e) => {
+            this.keys[e.key] = true;
+            if (e.key === 'x' || e.key === 'X') this.cycleWeapon();
+            if ((e.key === 'n' || e.key === 'N') && this.hasNuke) this.activateNuke();
+            if (e.key === ' ' && !this.gameOver) this.shoot();
+        });
+        window.addEventListener('keyup', (e) => this.keys[e.key] = false);
+        this.canvas.addEventListener('mousedown', () => this.mousePressed = true);
+        this.canvas.addEventListener('mouseup', () => this.mousePressed = false);
+        this.canvas.addEventListener('mouseleave', () => this.mousePressed = false);
+        document.getElementById('startButton').addEventListener('click', () => this.startGame());
+    }
+
+    startGame() {
+        console.log('Starting game...');
+        // Hide menu
         
         // Generate more stars after world size is defined
         this.stars = this.generateStars(3000);  // Increased from 2000 to 3000
@@ -1231,23 +1379,23 @@ class Game {
                 msg.y -= 0.5; // Float upward
                 msg.opacity = Math.max(0, msg.life / 60); // Fade out in the last second
                 
-                ctx.save();
-                ctx.fillStyle = msg.color + Math.floor(msg.opacity * 255).toString(16).padStart(2, '0');
-                ctx.font = 'bold 32px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(msg.text, this.canvas.width / 2, msg.y);
-                ctx.restore();
+                this.ctx.save();
+                this.ctx.fillStyle = msg.color + Math.floor(msg.opacity * 255).toString(16).padStart(2, '0');
+                this.ctx.font = 'bold 32px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(msg.text, this.canvas.width / 2, msg.y);
+                this.ctx.restore();
                 
                 return msg.life > 0;
             });
         }
 
         // Draw current rank
-        ctx.fillStyle = this.ranks[this.currentRank].color;
-        ctx.font = '20px Arial';
-        ctx.textAlign = 'right';
+        this.ctx.fillStyle = this.ranks[this.currentRank].color;
+        this.ctx.font = '20px Arial';
+        this.ctx.textAlign = 'right';
         const rankDisplay = this.currentRank.charAt(0).toUpperCase() + this.currentRank.slice(1);
-        ctx.fillText(`Rank: ${rankDisplay}`, this.canvas.width - 20, 120);
+        this.ctx.fillText(`Rank: ${rankDisplay}`, this.canvas.width - 20, 120);
     }
     
     gameLoop() {
@@ -1337,6 +1485,8 @@ class Game {
         const spawnX = this.player.x + Math.cos(this.player.angle) * this.player.radius;
         const spawnY = this.player.y + Math.sin(this.player.angle) * this.player.radius;
 
+        let shouldSwitchWeapon = false;
+
         switch (this.currentWeapon) {
             case 'bullet':
                 this.bullets.push(new Bullet(spawnX, spawnY, this.player.angle));
@@ -1359,6 +1509,9 @@ class Game {
                     this.bullets.push(plasma);
                     this.specialWeapons.plasma.ammo--;
                     this.specialWeapons.plasma.cooldown = this.specialWeapons.plasma.cooldownTime;
+                    if (this.specialWeapons.plasma.ammo === 0) {
+                        shouldSwitchWeapon = true;
+                    }
                 }
                 break;
             case 'railgun':
@@ -1367,6 +1520,9 @@ class Game {
                     this.bullets.push(rail);
                     this.specialWeapons.railgun.ammo--;
                     this.specialWeapons.railgun.cooldown = this.specialWeapons.railgun.cooldownTime;
+                    if (this.specialWeapons.railgun.ammo === 0) {
+                        shouldSwitchWeapon = true;
+                    }
                 }
                 break;
             case 'shotgun':
@@ -1378,21 +1534,40 @@ class Game {
                     }
                     this.specialWeapons.shotgun.ammo--;
                     this.specialWeapons.shotgun.cooldown = this.specialWeapons.shotgun.cooldownTime;
+                    if (this.specialWeapons.shotgun.ammo === 0) {
+                        shouldSwitchWeapon = true;
+                    }
                 }
                 break;
+        }
+
+        // If we just used the last ammo of a special weapon, switch to the next available weapon
+        if (shouldSwitchWeapon) {
+            this.cycleWeapon();
         }
     }
 
     cycleWeapon() {
+        // Start with basic weapons
         const weapons = ['bullet', 'missile', 'laser'];
+        
         // Add special weapons that have ammo
         Object.entries(this.specialWeapons).forEach(([weapon, data]) => {
             if (data.ammo > 0) {
                 weapons.push(weapon);
             }
         });
+
+        // Find the next available weapon
         const currentIndex = weapons.indexOf(this.currentWeapon);
-        this.currentWeapon = weapons[(currentIndex + 1) % weapons.length];
+        if (currentIndex === -1) {
+            // If current weapon is not in the list (because it ran out of ammo),
+            // switch to the first available weapon
+            this.currentWeapon = weapons[0];
+        } else {
+            // Otherwise cycle to the next weapon
+            this.currentWeapon = weapons[(currentIndex + 1) % weapons.length];
+        }
     }
 
     spawnEnemy() {
@@ -1602,16 +1777,39 @@ class Player {
         }
         ctx.closePath();
         
-        // Get rank color from game.ranks
-        const rankColor = game.ranks[this.rank].color;
-        ctx.strokeStyle = rankColor;
+        // Get rank color
+        let glowColor;
+        switch(this.rank) {
+            case 'cadet':
+                glowColor = [255, 255, 255]; // white
+                break;
+            case 'ensign':
+                glowColor = [0, 255, 0]; // green
+                break;
+            case 'lieutenant':
+                glowColor = [0, 255, 255]; // cyan
+                break;
+            case 'commander':
+                glowColor = [255, 255, 0]; // yellow
+                break;
+            case 'captain':
+                glowColor = [255, 0, 255]; // magenta
+                break;
+            case 'admiral':
+                glowColor = [255, 0, 0]; // red
+                break;
+            default:
+                glowColor = [255, 255, 255]; // white
+        }
+        
+        ctx.strokeStyle = `rgb(${glowColor[0]}, ${glowColor[1]}, ${glowColor[2]})`;
         ctx.lineWidth = 2;
         ctx.stroke();
         
         // Add rank-specific glow effect
         const glowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 1.5);
-        glowGradient.addColorStop(0, rankColor + '40'); // 25% opacity
-        glowGradient.addColorStop(1, rankColor + '00'); // 0% opacity
+        glowGradient.addColorStop(0, `rgba(${glowColor[0]}, ${glowColor[1]}, ${glowColor[2]}, 0.25)`);
+        glowGradient.addColorStop(1, `rgba(${glowColor[0]}, ${glowColor[1]}, ${glowColor[2]}, 0)`);
         ctx.fillStyle = glowGradient;
         ctx.fill();
         
@@ -2964,6 +3162,91 @@ class WeaponPickupEffect {
             ctx.fillStyle = `${this.color}${Math.floor((particle.life / 30) * 255).toString(16).padStart(2, '0')}`;
             ctx.fill();
         });
+    }
+}
+
+class RankUpEffect {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.radius = 0;
+        this.maxRadius = 100;
+        this.life = 60;
+        this.particles = [];
+        
+        // Create particles for the effect
+        for (let i = 0; i < 20; i++) {
+            const angle = (Math.PI * 2 * i) / 20;
+            const speed = 3 + Math.random() * 2;
+            this.particles.push({
+                x: this.x,
+                y: this.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 2 + Math.random() * 2,
+                life: 60
+            });
+        }
+    }
+    
+    update() {
+        this.radius += (this.maxRadius - this.radius) * 0.1;
+        this.life--;
+        
+        // Update particles
+        this.particles.forEach(particle => {
+            particle.x += particle.vx;
+            particle.y += particle.vy;
+            particle.life--;
+        });
+        
+        this.particles = this.particles.filter(p => p.life > 0);
+    }
+    
+    draw(ctx) {
+        // Draw expanding ring
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = this.color + Math.floor((this.life / 60) * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        // Draw particles
+        this.particles.forEach(particle => {
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+            ctx.fillStyle = this.color + Math.floor((particle.life / 60) * 255).toString(16).padStart(2, '0');
+            ctx.fill();
+        });
+        
+        // Draw stars
+        for (let i = 0; i < 5; i++) {
+            const angle = (Math.PI * 2 * i) / 5;
+            const x = this.x + Math.cos(angle) * this.radius * 0.7;
+            const y = this.y + Math.sin(angle) * this.radius * 0.7;
+            this.drawStar(ctx, x, y, 5, 10, 5, this.color, this.life / 60);
+        }
+    }
+    
+    drawStar(ctx, x, y, spikes, outerRadius, innerRadius, color, alpha) {
+        let rot = Math.PI / 2 * 3;
+        let step = Math.PI / spikes;
+        
+        ctx.beginPath();
+        ctx.moveTo(x, y - outerRadius);
+        
+        for (let i = 0; i < spikes; i++) {
+            ctx.lineTo(x + Math.cos(rot) * outerRadius, y + Math.sin(rot) * outerRadius);
+            rot += step;
+            ctx.lineTo(x + Math.cos(rot) * innerRadius, y + Math.sin(rot) * innerRadius);
+            rot += step;
+        }
+        
+        ctx.lineTo(x, y - outerRadius);
+        ctx.closePath();
+        ctx.fillStyle = color + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+        ctx.fill();
     }
 }
 
