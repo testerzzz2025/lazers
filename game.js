@@ -607,32 +607,42 @@ class Game {
     }
 
     spawnAsteroids() {
-        const minAsteroids = 10;
-        if (this.asteroids.length < minAsteroids) {
-            // Determine spawn position (off-screen)
-            const side = Math.floor(Math.random() * 4); // 0: top, 1: right, 2: bottom, 3: left
+        while (this.asteroids.length < 50) {  // Increased from 15 to 50
+            // Spawn asteroids just outside the visible area but inside world bounds
+            const spawnSide = Math.floor(Math.random() * 4);
             let x, y;
+            const buffer = 100; // Distance from border to spawn
             
-            switch(side) {
+            switch(spawnSide) {
                 case 0: // top
-                    x = Math.random() * this.worldSize.width;
-                    y = -100;
+                    x = Math.max(buffer, Math.min(this.camera.x + Math.random() * this.canvas.width * 3, this.worldSize.width - buffer));
+                    y = Math.max(buffer, this.camera.y - 200);
                     break;
                 case 1: // right
-                    x = this.worldSize.width + 100;
-                    y = Math.random() * this.worldSize.height;
+                    x = Math.min(this.worldSize.width - buffer, this.camera.x + this.canvas.width * 3);
+                    y = Math.max(buffer, Math.min(this.camera.y + Math.random() * this.canvas.height * 3, this.worldSize.height - buffer));
                     break;
                 case 2: // bottom
-                    x = Math.random() * this.worldSize.width;
-                    y = this.worldSize.height + 100;
+                    x = Math.max(buffer, Math.min(this.camera.x + Math.random() * this.canvas.width * 3, this.worldSize.width - buffer));
+                    y = Math.min(this.worldSize.height - buffer, this.camera.y + this.canvas.height * 3);
                     break;
                 case 3: // left
-                    x = -100;
-                    y = Math.random() * this.worldSize.height;
+                    x = Math.max(buffer, this.camera.x - 200);
+                    y = Math.max(buffer, Math.min(this.camera.y + Math.random() * this.canvas.height * 3, this.worldSize.height - buffer));
                     break;
             }
             
-            this.asteroids.push(new Asteroid(x, y));
+            // Add some variation to asteroid sizes
+            const radius = 25 + Math.random() * 15; // Random size between 25 and 40
+            
+            // Add variation to asteroid velocities
+            const speed = 1 + Math.random() * 2; // Random speed between 1 and 3
+            const angle = Math.random() * Math.PI * 2; // Random direction
+            const asteroid = new Asteroid(x, y, radius);
+            asteroid.velocity.x = Math.cos(angle) * speed;
+            asteroid.velocity.y = Math.sin(angle) * speed;
+            
+            this.asteroids.push(asteroid);
         }
     }
     
@@ -667,54 +677,16 @@ class Game {
         // Bullet-Asteroid collisions
         for (let i = this.bullets.length - 1; i >= 0; i--) {
             for (let j = this.asteroids.length - 1; j >= 0; j--) {
-                if (this.bullets[i] && this.asteroids[j] && this.bullets[i].collidesWith(this.asteroids[j])) {
-                    // Create explosion
-                    this.createExplosion(this.asteroids[j].x, this.asteroids[j].y);
+                if (this.bullets[i].collidesWith(this.asteroids[j])) {
+                    // Create small explosion at collision point
+                    const explosionX = this.bullets[i].x;
+                    const explosionY = this.bullets[i].y;
+                    this.explosions.push(new SmallExplosion(explosionX, explosionY));
                     
-                    // Reduce asteroid health
-                    this.asteroids[j].health--;
-                    
-                    if (this.asteroids[j].health <= 0) {
-                        // Split asteroid if it's large or medium
-                        const newAsteroids = this.asteroids[j].split();
-                        this.asteroids.push(...newAsteroids);
-                        
-                        // Award score based on size
-                        const scoreValue = this.asteroids[j].size === 'large' ? 100 :
-                                         this.asteroids[j].size === 'medium' ? 50 : 25;
-                        this.score += scoreValue;
-                        
-                        // Remove destroyed asteroid
-                        this.asteroids.splice(j, 1);
-                    }
-                    
-                    // Remove bullet
                     this.bullets.splice(i, 1);
-                    break;
-                }
-            }
-        }
-
-        // Missile-Asteroid collisions
-        for (let i = this.missiles.length - 1; i >= 0; i--) {
-            for (let j = this.asteroids.length - 1; j >= 0; j--) {
-                if (this.missiles[i] && this.asteroids[j] && this.missiles[i].collidesWith(this.asteroids[j])) {
-                    // Create explosion
-                    this.createExplosion(this.asteroids[j].x, this.asteroids[j].y);
-                    
-                    // Missiles always destroy asteroids regardless of size
-                    // Split asteroid if it's large or medium
-                    const newAsteroids = this.asteroids[j].split();
-                    this.asteroids.push(...newAsteroids);
-                    
-                    // Award score based on size
-                    const scoreValue = this.asteroids[j].size === 'large' ? 150 :
-                                     this.asteroids[j].size === 'medium' ? 75 : 35;
-                    this.score += scoreValue;
-                    
-                    // Remove destroyed asteroid and missile
                     this.asteroids.splice(j, 1);
-                    this.missiles.splice(i, 1);
+                    this.score += 100;
+                    this.scoreElement.textContent = `Score: ${this.score}`;
                     break;
                 }
             }
@@ -733,6 +705,59 @@ class Game {
                     this.satellites.splice(j, 1);
                     this.score += 500;
                     this.scoreElement.textContent = `Score: ${this.score}`;
+                    break;
+                }
+            }
+        }
+
+        // Missile-Asteroid collisions
+        for (let i = this.missiles.length - 1; i >= 0; i--) {
+            for (let j = this.asteroids.length - 1; j >= 0; j--) {
+                if (this.missiles[i].collidesWith(this.asteroids[j])) {
+                    // Store missile position before removing it
+                    const missileX = this.missiles[i].x;
+                    const missileY = this.missiles[i].y;
+                    const explosionRadius = this.missiles[i].explosionRadius;
+                    const isNuke = this.missiles[i].isNuke;
+                    
+                    // Create explosion effect
+                    if (isNuke) {
+                        const nukeExplosion = new NukeExplosion(missileX, missileY);
+                        this.explosions.push(nukeExplosion);
+                    } else {
+                        this.createExplosion(missileX, missileY);
+                    }
+                    
+                    // Remove missile
+                    this.missiles.splice(i, 1);
+                    
+                    // Check for asteroids within explosion radius
+                    for (let k = this.asteroids.length - 1; k >= 0; k--) {
+                        const dx = missileX - this.asteroids[k].x;
+                        const dy = missileY - this.asteroids[k].y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < explosionRadius) {
+                            this.asteroids.splice(k, 1);
+                            this.score += 100;
+                            this.scoreElement.textContent = `Score: ${this.score}`;
+                        }
+                    }
+
+                    // If it's a nuke, also check for satellites within blast radius
+                    if (isNuke) {
+                        for (let k = this.satellites.length - 1; k >= 0; k--) {
+                            const dx = missileX - this.satellites[k].x;
+                            const dy = missileY - this.satellites[k].y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            
+                            if (distance < explosionRadius) {
+                                this.satellites.splice(k, 1);
+                                this.score += 500;
+                                this.scoreElement.textContent = `Score: ${this.score}`;
+                            }
+                        }
+                    }
                     break;
                 }
             }
@@ -1819,84 +1844,64 @@ class Player {
 }
 
 class Asteroid {
-    constructor(x, y, radius = 50, size = 'large') {
+    constructor(x, y, radius) {
         this.x = x;
         this.y = y;
         this.radius = radius;
-        this.size = size;
-        this.angle = Math.random() * Math.PI * 2;
-        this.speed = 1 + Math.random() * (size === 'large' ? 0.5 : size === 'medium' ? 1 : 2);
         this.velocity = {
-            x: Math.cos(this.angle) * this.speed,
-            y: Math.sin(this.angle) * this.speed
+            x: (Math.random() - 0.5) * 2,
+            y: (Math.random() - 0.5) * 2
         };
-        this.rotationSpeed = (Math.random() - 0.5) * 0.02;
-        this.rotation = Math.random() * Math.PI * 2;
+        // Generate random points for the asteroid shape
         this.points = this.generatePoints();
-        this.health = size === 'large' ? 3 : size === 'medium' ? 2 : 1;
     }
-
+    
     generatePoints() {
         const points = [];
-        const numPoints = 12;
-        const angleStep = (Math.PI * 2) / numPoints;
+        const numPoints = 12 + Math.floor(Math.random() * 4); // Random number of points between 12-15
+        const baseRadius = this.radius;
         
         for (let i = 0; i < numPoints; i++) {
-            const angle = i * angleStep;
-            const radiusVariation = this.size === 'large' ? 0.4 : this.size === 'medium' ? 0.3 : 0.2;
-            const distance = this.radius * (1 + (Math.random() - 0.5) * radiusVariation);
+            const angle = (i / numPoints) * Math.PI * 2;
+            // Add random variation to the radius for each point
+            const radiusVariation = 0.7 + Math.random() * 0.6; // Random between 0.7 and 1.3
+            const radius = baseRadius * radiusVariation;
+            
             points.push({
-                x: Math.cos(angle) * distance,
-                y: Math.sin(angle) * distance
+                x: Math.cos(angle) * radius,
+                y: Math.sin(angle) * radius
             });
         }
         
         return points;
     }
-
-    split() {
-        let newAsteroids = [];
-        if (this.size === 'large') {
-            // Split into 2-3 medium asteroids
-            const count = 2 + Math.floor(Math.random() * 2);
-            for (let i = 0; i < count; i++) {
-                const angle = (Math.PI * 2 * i) / count;
-                const distance = this.radius * 0.5;
-                newAsteroids.push(new Asteroid(
-                    this.x + Math.cos(angle) * distance,
-                    this.y + Math.sin(angle) * distance,
-                    35,
-                    'medium'
-                ));
-            }
-        } else if (this.size === 'medium') {
-            // Split into 2-4 small asteroids
-            const count = 2 + Math.floor(Math.random() * 3);
-            for (let i = 0; i < count; i++) {
-                const angle = (Math.PI * 2 * i) / count;
-                const distance = this.radius * 0.5;
-                newAsteroids.push(new Asteroid(
-                    this.x + Math.cos(angle) * distance,
-                    this.y + Math.sin(angle) * distance,
-                    20,
-                    'small'
-                ));
-            }
-        }
-        return newAsteroids;
-    }
-
+    
     update() {
         this.x += this.velocity.x;
         this.y += this.velocity.y;
-        this.rotation += this.rotationSpeed;
     }
-
+    
+    wrap(width, height) {
+        // Handle horizontal wrapping
+        if (this.x < -this.radius) {
+            this.x = width + this.radius;
+        } else if (this.x > width + this.radius) {
+            this.x = -this.radius;
+        }
+        
+        // Handle vertical wrapping
+        if (this.y < -this.radius) {
+            this.y = height + this.radius;
+        } else if (this.y > height + this.radius) {
+            this.y = -this.radius;
+        }
+    }
+    
     draw(ctx) {
         ctx.save();
         ctx.translate(this.x, this.y);
-        ctx.rotate(this.rotation);
         
+        // Draw main asteroid shape
         ctx.beginPath();
         ctx.moveTo(this.points[0].x, this.points[0].y);
         for (let i = 1; i < this.points.length; i++) {
@@ -1904,11 +1909,7 @@ class Asteroid {
         }
         ctx.closePath();
         
-        // Different colors based on size
-        const color = this.size === 'large' ? '#666' : 
-                     this.size === 'medium' ? '#888' : '#aaa';
-        ctx.fillStyle = color;
-        ctx.fill();
+        // Draw asteroid outline
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 2;
         ctx.stroke();
