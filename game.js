@@ -674,23 +674,93 @@ class Game {
     }
     
     checkCollisions() {
-        // Bullet-Asteroid collisions
-        for (let i = this.bullets.length - 1; i >= 0; i--) {
-            for (let j = this.asteroids.length - 1; j >= 0; j--) {
-                if (this.bullets[i].collidesWith(this.asteroids[j])) {
-                    // Create small explosion at collision point
-                    const explosionX = this.bullets[i].x;
-                    const explosionY = this.bullets[i].y;
-                    this.explosions.push(new SmallExplosion(explosionX, explosionY));
-                    
-                    this.bullets.splice(i, 1);
-                    this.asteroids.splice(j, 1);
-                    this.score += 100;
-                    this.scoreElement.textContent = `Score: ${this.score}`;
-                    break;
+        // Check bullet collisions with asteroids
+        this.bullets.forEach((bullet, bulletIndex) => {
+            this.asteroids.forEach((asteroid, asteroidIndex) => {
+                if (bullet.collidesWith(asteroid)) {
+                    // Remove the bullet
+                    this.bullets.splice(bulletIndex, 1);
+
+                    // Reduce asteroid health
+                    asteroid.health--;
+
+                    // Create explosion effect
+                    this.createExplosion(bullet.x, bullet.y);
+
+                    if (asteroid.health <= 0) {
+                        // Remove the original asteroid
+                        this.asteroids.splice(asteroidIndex, 1);
+
+                        // Award score based on asteroid size
+                        let score;
+                        switch(asteroid.size) {
+                            case 'large':
+                                score = 100;
+                                break;
+                            case 'medium':
+                                score = 50;
+                                break;
+                            case 'small':
+                                score = 25;
+                                break;
+                            default:
+                                score = 10;
+                        }
+                        this.score += score;
+                        this.showMessage(`+${score}`, '#fff');
+
+                        // Split the asteroid
+                        const newAsteroids = asteroid.split();
+                        this.asteroids.push(...newAsteroids);
+
+                        // Create a bigger explosion for final destruction
+                        this.createExplosion(asteroid.x, asteroid.y);
+                    }
+                    return;
                 }
-            }
-        }
+            });
+        });
+
+        // Check missile collisions with asteroids
+        this.missiles.forEach((missile, missileIndex) => {
+            this.asteroids.forEach((asteroid, asteroidIndex) => {
+                if (missile.collidesWith(asteroid)) {
+                    // Remove the missile
+                    this.missiles.splice(missileIndex, 1);
+
+                    // Missiles always destroy asteroids regardless of size
+                    // Award bonus score for missile hits
+                    let score;
+                    switch(asteroid.size) {
+                        case 'large':
+                            score = 150;
+                            break;
+                        case 'medium':
+                            score = 75;
+                            break;
+                        case 'small':
+                            score = 35;
+                            break;
+                        default:
+                            score = 15;
+                    }
+                    this.score += score;
+                    this.showMessage(`+${score}`, '#ff0');
+
+                    // Create explosion
+                    this.createExplosion(missile.x, missile.y);
+
+                    // Remove the asteroid
+                    this.asteroids.splice(asteroidIndex, 1);
+
+                    // Split the asteroid
+                    const newAsteroids = asteroid.split();
+                    this.asteroids.push(...newAsteroids);
+
+                    return;
+                }
+            });
+        });
 
         // Bullet-Satellite collisions
         for (let i = this.bullets.length - 1; i >= 0; i--) {
@@ -705,59 +775,6 @@ class Game {
                     this.satellites.splice(j, 1);
                     this.score += 500;
                     this.scoreElement.textContent = `Score: ${this.score}`;
-                    break;
-                }
-            }
-        }
-
-        // Missile-Asteroid collisions
-        for (let i = this.missiles.length - 1; i >= 0; i--) {
-            for (let j = this.asteroids.length - 1; j >= 0; j--) {
-                if (this.missiles[i].collidesWith(this.asteroids[j])) {
-                    // Store missile position before removing it
-                    const missileX = this.missiles[i].x;
-                    const missileY = this.missiles[i].y;
-                    const explosionRadius = this.missiles[i].explosionRadius;
-                    const isNuke = this.missiles[i].isNuke;
-                    
-                    // Create explosion effect
-                    if (isNuke) {
-                        const nukeExplosion = new NukeExplosion(missileX, missileY);
-                        this.explosions.push(nukeExplosion);
-                    } else {
-                        this.createExplosion(missileX, missileY);
-                    }
-                    
-                    // Remove missile
-                    this.missiles.splice(i, 1);
-                    
-                    // Check for asteroids within explosion radius
-                    for (let k = this.asteroids.length - 1; k >= 0; k--) {
-                        const dx = missileX - this.asteroids[k].x;
-                        const dy = missileY - this.asteroids[k].y;
-                        const distance = Math.sqrt(dx * dx + dy * dy);
-                        
-                        if (distance < explosionRadius) {
-                            this.asteroids.splice(k, 1);
-                            this.score += 100;
-                            this.scoreElement.textContent = `Score: ${this.score}`;
-                        }
-                    }
-
-                    // If it's a nuke, also check for satellites within blast radius
-                    if (isNuke) {
-                        for (let k = this.satellites.length - 1; k >= 0; k--) {
-                            const dx = missileX - this.satellites[k].x;
-                            const dy = missileY - this.satellites[k].y;
-                            const distance = Math.sqrt(dx * dx + dy * dy);
-                            
-                            if (distance < explosionRadius) {
-                                this.satellites.splice(k, 1);
-                                this.score += 500;
-                                this.scoreElement.textContent = `Score: ${this.score}`;
-                            }
-                        }
-                    }
                     break;
                 }
             }
@@ -1844,76 +1861,154 @@ class Player {
 }
 
 class Asteroid {
-    constructor(x, y, radius) {
+    constructor(x, y, radius = 50, size = 'large') {
         this.x = x;
         this.y = y;
-        this.radius = radius;
+        this.size = size;
+        
+        // Set radius and health based on size
+        switch(size) {
+            case 'large':
+                this.radius = radius;
+                this.health = 3;
+                break;
+            case 'medium':
+                this.radius = radius * 0.6;
+                this.health = 2;
+                break;
+            case 'small':
+                this.radius = radius * 0.3;
+                this.health = 1;
+                break;
+            default:
+                this.radius = radius;
+                this.health = 1;
+        }
+
+        // Random rotation and velocity
+        this.angle = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.02;
         this.velocity = {
             x: (Math.random() - 0.5) * 2,
             y: (Math.random() - 0.5) * 2
         };
-        // Generate random points for the asteroid shape
+
+        // Scale velocity based on size (smaller asteroids move faster)
+        const speedMultiplier = this.size === 'small' ? 1.5 : 
+                               this.size === 'medium' ? 1.2 : 1;
+        this.velocity.x *= speedMultiplier;
+        this.velocity.y *= speedMultiplier;
+
+        // Generate shape points
         this.points = this.generatePoints();
     }
-    
+
     generatePoints() {
         const points = [];
-        const numPoints = 12 + Math.floor(Math.random() * 4); // Random number of points between 12-15
-        const baseRadius = this.radius;
-        
+        const numPoints = 12;
+        const roughness = 0.3; // Adjust for more/less rough asteroids
+
         for (let i = 0; i < numPoints; i++) {
             const angle = (i / numPoints) * Math.PI * 2;
-            // Add random variation to the radius for each point
-            const radiusVariation = 0.7 + Math.random() * 0.6; // Random between 0.7 and 1.3
-            const radius = baseRadius * radiusVariation;
-            
+            const variance = 1 - (Math.random() * roughness);
+            const r = this.radius * variance;
             points.push({
-                x: Math.cos(angle) * radius,
-                y: Math.sin(angle) * radius
+                x: Math.cos(angle) * r,
+                y: Math.sin(angle) * r
             });
         }
-        
         return points;
     }
-    
+
+    split() {
+        if (this.size === 'large') {
+            // Large asteroids split into 2-3 medium asteroids
+            const numPieces = 2 + Math.floor(Math.random() * 2);
+            const pieces = [];
+            for (let i = 0; i < numPieces; i++) {
+                const offset = {
+                    x: (Math.random() - 0.5) * this.radius * 0.5,
+                    y: (Math.random() - 0.5) * this.radius * 0.5
+                };
+                pieces.push(new Asteroid(
+                    this.x + offset.x,
+                    this.y + offset.y,
+                    this.radius,
+                    'medium'
+                ));
+            }
+            return pieces;
+        } else if (this.size === 'medium') {
+            // Medium asteroids split into 2-4 small asteroids
+            const numPieces = 2 + Math.floor(Math.random() * 3);
+            const pieces = [];
+            for (let i = 0; i < numPieces; i++) {
+                const offset = {
+                    x: (Math.random() - 0.5) * this.radius * 0.5,
+                    y: (Math.random() - 0.5) * this.radius * 0.5
+                };
+                pieces.push(new Asteroid(
+                    this.x + offset.x,
+                    this.y + offset.y,
+                    this.radius,
+                    'small'
+                ));
+            }
+            return pieces;
+        }
+        // Small asteroids don't split
+        return [];
+    }
+
     update() {
         this.x += this.velocity.x;
         this.y += this.velocity.y;
+        this.angle += this.rotationSpeed;
     }
-    
-    wrap(width, height) {
-        // Handle horizontal wrapping
-        if (this.x < -this.radius) {
-            this.x = width + this.radius;
-        } else if (this.x > width + this.radius) {
-            this.x = -this.radius;
-        }
-        
-        // Handle vertical wrapping
-        if (this.y < -this.radius) {
-            this.y = height + this.radius;
-        } else if (this.y > height + this.radius) {
-            this.y = -this.radius;
-        }
-    }
-    
+
     draw(ctx) {
         ctx.save();
         ctx.translate(this.x, this.y);
-        
-        // Draw main asteroid shape
+        ctx.rotate(this.angle);
+
+        // Draw asteroid
         ctx.beginPath();
         ctx.moveTo(this.points[0].x, this.points[0].y);
         for (let i = 1; i < this.points.length; i++) {
             ctx.lineTo(this.points[i].x, this.points[i].y);
         }
         ctx.closePath();
-        
-        // Draw asteroid outline
+
+        // Color based on size
+        let color;
+        switch(this.size) {
+            case 'large':
+                color = '#aaa';
+                break;
+            case 'medium':
+                color = '#888';
+                break;
+            case 'small':
+                color = '#666';
+                break;
+            default:
+                color = '#aaa';
+        }
+
+        ctx.fillStyle = color;
+        ctx.fill();
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 2;
         ctx.stroke();
-        
+
+        // Draw health indicator (optional)
+        if (this.health > 1) {
+            ctx.fillStyle = '#f00';
+            for (let i = 0; i < this.health; i++) {
+                ctx.fillRect(-this.radius/2 + (i * 10), -this.radius - 10, 8, 4);
+            }
+        }
+
         ctx.restore();
     }
 }
